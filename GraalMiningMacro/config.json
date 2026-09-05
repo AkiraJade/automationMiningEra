@@ -1,0 +1,55 @@
+{
+    "window": {
+        "title_pattern": "GraalOnline Era",
+        "target_executable": "Era.exe",
+        "auto_detect": true,
+        "match_exact": false,
+        "custom_hwnd": null
+    },
+    "capture": {
+        "fps": 30,
+        "preview_scale": 1.0,
+        "aspect_ratio_preserve": true
+    },
+    "keys": {
+        "drill_equip_key": "t",
+        "spider_combat_key": "s",
+        "attack_key": "space",
+        "emergency_stop_key": "f12"
+    },
+    "timing": {
+        "mining_action_interval": 0.4,
+        "verification_timeout": 3.0,
+        "nothing_to_mine_cooldown": 10.0,
+        "spider_recheck_interval": 0.2,
+        "movement_pulse_duration": 0.15,
+        "recovery_timeout": 15.0
+    },
+    "vision": {
+        "perception_fps": 10,
+        "player_confidence_threshold": 0.65,
+        "target_confidence_threshold": 0.6,
+        "spider_confidence_threshold": 0.7,
+        "yellow_glow_hsv_min": [
+            15,
+            120,
+            150
+        ],
+        "yellow_glow_hsv_max": [
+            35,
+            255,
+            255
+        ],
+        "yolo_model_path": "models/graal_mining.pt",
+        "yolo_device": "cpu",
+        "debug_overlay_enabled": true
+    },
+    "safety": {
+        "dry_run": true,
+        "automation_level": 1,
+        "max_retries": 3,
+        "action_rate_limit": 0.1,
+        "pause_on_window_lost": true
+    },
+    "mining_level": 0
+}

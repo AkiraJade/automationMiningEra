@@ -1,0 +1,64 @@
+[17:51:09] [INFO] [detector.py:179] Selected Game Target Window: HWND=2001, Title='Graal Era - Client', PID=5555, Process='graalera.exe', Res=1024x768 (Score=250)
+[17:51:09] [INFO] [detector.py:179] Selected Game Target Window: HWND=3002, Title='Graal Online Era', PID=6002, Process='graalera.exe', Res=1280x720 (Score=350)
+[17:51:20] [INFO] [detector.py:179] Selected Game Target Window: HWND=2001, Title='Graal Era - Client', PID=5555, Process='graalera.exe', Res=1024x768 (Score=250)
+[17:51:20] [INFO] [detector.py:179] Selected Game Target Window: HWND=3002, Title='Graal Online Era', PID=6002, Process='graalera.exe', Res=1280x720 (Score=350)
+[17:51:38] [INFO] [detector.py:179] Selected Game Target Window: HWND=2001, Title='Graal Era - Client', PID=5555, Process='graalera.exe', Res=1024x768 (Score=250)
+[17:51:38] [INFO] [detector.py:179] Selected Game Target Window: HWND=3002, Title='Graal Online Era', PID=6002, Process='graalera.exe', Res=1280x720 (Score=350)
+[17:51:49] [INFO] [detector.py:179] Selected Game Target Window: HWND=2001, Title='Graal Era - Client', PID=5555, Process='graalera.exe', Res=1024x768 (Score=250)
+[17:51:49] [INFO] [detector.py:179] Selected Game Target Window: HWND=3002, Title='Graal Online Era', PID=6002, Process='graalera.exe', Res=1280x720 (Score=350)
+[17:52:00] [INFO] [detector.py:179] Selected Game Target Window: HWND=2001, Title='Graal Era - Client', PID=5555, Process='graalera.exe', Res=1024x768 (Score=250)
+[17:52:00] [INFO] [detector.py:179] Selected Game Target Window: HWND=3002, Title='Graal Online Era', PID=6002, Process='graalera.exe', Res=1280x720 (Score=350)
+[17:52:19] [INFO] [detector.py:179] Selected Game Target Window: HWND=2001, Title='Graal Era - Client', PID=5555, Process='graalera.exe', Res=1024x768 (Score=250)
+[17:52:19] [INFO] [detector.py:179] Selected Game Target Window: HWND=3002, Title='Graal Online Era', PID=6002, Process='graalera.exe', Res=1280x720 (Score=350)
+[17:52:34] [INFO] [detector.py:179] Selected Game Target Window: HWND=2001, Title='Graal Era - Client', PID=5555, Process='graalera.exe', Res=1024x768 (Score=250)
+[17:52:34] [INFO] [detector.py:179] Selected Game Target Window: HWND=3002, Title='Graal Online Era', PID=6002, Process='graalera.exe', Res=1280x720 (Score=350)
+[17:54:47] [ERROR] [detector.py:100] Failed to query HWND 2300098: (1400, 'GetWindowRect', 'Invalid window handle.')
+[17:58:32] [INFO] [detector.py:203] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[17:59:42] [INFO] [detector.py:203] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 1311568 | PID: 4152 | Process: Era.exe | Resolution: 671x981 (Score: 865)
+[18:00:24] [INFO] [detector.py:203] GAME WINDOW DETECTED | Title: 'GraalEra-Auto - Antigravity' | HWND: 530582 | PID: 15292 | Process: Antigravity IDE.exe | Resolution: 1920x1020 (Score: 300)
+[18:05:29] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[18:05:29] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[18:05:46] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 1311568 | PID: 4152 | Process: Era.exe | Resolution: 1199x981 (Score: 900)
+[18:08:52] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[18:08:52] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[18:09:29] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 1311568 | PID: 4152 | Process: Era.exe | Resolution: 1199x981 (Score: 900)
+[18:33:56] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[18:33:56] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[18:34:14] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[18:34:14] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[18:36:18] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 1311568 | PID: 4152 | Process: Era.exe | Resolution: 1199x981 (Score: 900)
+[18:36:37] [INFO] [detector.py:268] Target HWND 1311568 is no longer valid. Triggering re-detection...
+[18:36:56] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalEra-Auto - Antigravity' | HWND: 530582 | PID: 15292 | Process: Antigravity IDE.exe | Resolution: 1920x1020 (Score: 300)
+[18:37:59] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalEra-Auto - Antigravity' | HWND: 530582 | PID: 15292 | Process: Antigravity IDE.exe | Resolution: 1920x1020 (Score: 300)
+[18:39:30] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1199x981 (Score: 900)
+[18:58:05] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1199x981 (Score: 900)
+[18:58:50] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[18:58:50] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[19:00:11] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[19:00:11] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[19:00:21] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[19:00:21] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[19:32:46] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1199x981 (Score: 900)
+[19:36:52] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[19:36:52] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[19:37:07] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[19:37:07] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[19:39:07] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1199x981 (Score: 900)
+[21:40:55] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[21:40:55] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[21:41:22] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[21:41:22] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[22:00:55] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1920x991 (Score: 900)
+[22:03:42] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[22:03:42] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[22:05:25] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[22:05:25] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[22:05:38] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[22:05:38] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[22:06:09] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1920x991 (Score: 900)
+[22:47:29] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1920x991 (Score: 900)
+[22:49:09] [INFO] [detector.py:268] Target HWND 726982 is no longer valid. Triggering re-detection...
+[22:49:09] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'Identify Bot Programming - Opera' | HWND: 262528 | PID: 27752 | Process: opera.exe | Resolution: 1920x1020 (Score: 200)
+[22:49:29] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 5001 | PID: 7777 | Process: Era.exe | Resolution: 1280x720 (Score: 850)
+[22:49:29] [INFO] [detector.py:268] Target HWND 5001 is no longer valid. Triggering re-detection...
+[22:49:54] [INFO] [detector.py:207] GAME WINDOW DETECTED | Title: 'GraalOnline Era' | HWND: 726982 | PID: 27528 | Process: Era.exe | Resolution: 1920x991 (Score: 900)
