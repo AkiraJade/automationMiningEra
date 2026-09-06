@@ -335,7 +335,7 @@ class ReferenceTestDialog(QDialog):
         table.setRowCount(len(all_refs))
 
         for row, ref in enumerate(all_refs):
-            match_res = self.manager.matcher.match_single(self.frame_bgr, ref) if ref.enabled else None
+            match_res = self.manager.matcher.match_single(self.frame_bgr, ref, multi_scale=True) if ref.enabled else None
 
             table.setItem(row, 0, QTableWidgetItem(ref.category.upper()))
             table.setItem(row, 1, QTableWidgetItem(ref.name))

@@ -24,7 +24,8 @@ class ReferenceManager:
         subcategory: Optional[str] = None,
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
-        match_cache: Optional[dict] = None
+        match_cache: Optional[dict] = None,
+        multi_scale: bool = False
     ) -> Optional[ReferenceMatchResult]:
         """Finds the highest confidence match in a category (and optional subcategory)."""
         if image is None or image.size == 0:
@@ -38,7 +39,7 @@ class ReferenceManager:
 
         for ref in refs:
             match_res = self.matcher.match_single(
-                image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache
+                image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
             )
             if match_res.found:
                 if best_match is None or match_res.confidence > best_match.confidence:
@@ -52,7 +53,8 @@ class ReferenceManager:
         category: Optional[str] = None,
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
-        match_cache: Optional[dict] = None
+        match_cache: Optional[dict] = None,
+        multi_scale: bool = False
     ) -> List[ReferenceMatchResult]:
         """Returns all reference matches across categories or within a specific category."""
         if image is None or image.size == 0:
@@ -60,9 +62,9 @@ class ReferenceManager:
 
         if category:
             return self.matcher.match_all_in_category(
-                image, category, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache
+                image, category, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
             )
         else:
             return self.matcher.match_all(
-                image, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache
+                image, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
             )

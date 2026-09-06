@@ -77,7 +77,7 @@ class ReferenceMatcher:
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[Dict[Tuple[str, Optional[Tuple[int, int, int, int]]], ReferenceMatchResult]] = None,
-        multi_scale: bool = True
+        multi_scale: bool = False
     ) -> ReferenceMatchResult:
         """Evaluates a single ReferenceImage against an image frame (or ROI)."""
         if not ref.enabled or image is None or image.size == 0:
@@ -250,14 +250,17 @@ class ReferenceMatcher:
         registry: ReferenceRegistry,
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
-        match_cache: Optional[dict] = None
+        match_cache: Optional[dict] = None,
+        multi_scale: bool = False
     ) -> List[ReferenceMatchResult]:
         """Matches all enabled references in a category against image, returning sorted matches."""
         results: List[ReferenceMatchResult] = []
         references = registry.get_enabled_by_category(category)
 
         for ref in references:
-            res = self.match_single(image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache)
+            res = self.match_single(
+                image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
+            )
             if res.found:
                 results.append(res)
 
@@ -271,7 +274,8 @@ class ReferenceMatcher:
         registry: ReferenceRegistry,
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
-        match_cache: Optional[dict] = None
+        match_cache: Optional[dict] = None,
+        multi_scale: bool = False
     ) -> List[ReferenceMatchResult]:
         """Matches all enabled references across all categories against image."""
         results: List[ReferenceMatchResult] = []
@@ -279,7 +283,9 @@ class ReferenceMatcher:
 
         for ref in all_refs:
             if ref.enabled:
-                res = self.match_single(image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache)
+                res = self.match_single(
+                    image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
+                )
                 if res.found:
                     results.append(res)
 

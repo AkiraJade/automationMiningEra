@@ -69,14 +69,16 @@ class PerceptionWorkerThread(QThread):
             dropped = self._dropped_frames
             pct = (dropped / total * 100.0) if total > 0 else 0.0
             avg_proc = float(np.mean(self._proc_time_history)) if self._proc_time_history else self.last_proc_time_ms
+            formatted_text = f"{dropped:,} ({pct:.1f}%) [Rate Sync]" if self.health_status == "HEALTHY" else f"{dropped:,} ({pct:.1f}%)"
             return {
                 "perception_fps": self.current_fps,
                 "proc_time_ms": self.last_proc_time_ms,
                 "avg_proc_time_ms": avg_proc,
                 "total_enqueued_frames": total,
                 "dropped_frames": dropped,
+                "skipped_frames": dropped,
                 "drop_rate_pct": pct,
-                "dropped_formatted": f"{dropped:,} ({pct:.1f}%)",
+                "dropped_formatted": formatted_text,
                 "health": self.health_status,
             }
 

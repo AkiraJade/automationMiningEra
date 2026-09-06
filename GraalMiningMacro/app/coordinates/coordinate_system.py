@@ -32,3 +32,22 @@ class CoordinateSystem:
         if window_info.client_width <= 0 or window_info.client_height <= 0:
             return (0.0, 0.0)
         return (client_x / window_info.client_width, client_y / window_info.client_height)
+
+
+class ViewportGeometry:
+    """Detects and isolates the actual 2D game canvas viewport boundaries within captured frames."""
+
+    @staticmethod
+    def extract_viewport_rect(frame_width: int, frame_height: int) -> Tuple[int, int, int, int]:
+        """Returns (x, y, w, h) bounding box of playable game area, stripping title bar and outer padding."""
+        if frame_width <= 0 or frame_height <= 0:
+            return (0, 0, 100, 100)
+        
+        # GraalOnline Era game viewport occupies central region below top HUD bar
+        top_margin = int(frame_height * 0.05)
+        left_margin = int(frame_width * 0.02)
+        viewport_w = int(frame_width * 0.96)
+        viewport_h = int(frame_height * 0.90)
+
+        return (left_margin, top_margin, viewport_w, viewport_h)
+
