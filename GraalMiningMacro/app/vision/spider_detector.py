@@ -89,12 +89,16 @@ class SpiderDetector:
                 use_core=True,
             )
             if ref_match and ref_match.found:
-                raw_match = ref_match
-                cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
-                ref_name = ref_match.reference_name
-                cand_bbox = ref_match.bbox
-                cand_center = ref_match.center
-                method = "TEMPLATE"
+                cx, cy = ref_match.center
+                height, width = frame.shape[:2]
+                is_ui_element = (height >= 400 and width >= 600) and (cy < 45 or (cx < 450 and cy < 250))
+                if not is_ui_element:
+                    raw_match = ref_match
+                    cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
+                    ref_name = ref_match.reference_name
+                    cand_bbox = ref_match.bbox
+                    cand_center = ref_match.center
+                    method = "TEMPLATE"
 
         # 2. YOLO Detections Fallback
         if not cand_bbox and yolo_detections:

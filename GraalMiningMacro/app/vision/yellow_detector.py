@@ -89,11 +89,24 @@ class YellowGlowDetector:
                 use_core=True,
             )
             if ref_match and ref_match.found and "yellow" in (ref_match.subcategory + ref_match.reference_name).lower():
-                raw_match = ref_match
-                cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
-                cand_bbox = ref_match.bbox
-                cand_center = ref_match.center
-                ref_name = ref_match.reference_name
+                c_x, c_y = ref_match.center
+                # Exclude top window title bar and top-left UI header (chat, phone, map buttons) on full frames
+                is_ui_element = (height >= 400 and width >= 600) and (c_y < 45 or (c_x < 450 and c_y < 250))
+                if not is_ui_element:
+                    if player_center and player_center[0] > 0 and player_center[1] > 0:
+                        dist_p = float(np.hypot(c_x - player_center[0], c_y - player_center[1]))
+                        if dist_p <= 140.0:
+                            raw_match = ref_match
+                            cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
+                            cand_bbox = ref_match.bbox
+                            cand_center = ref_match.center
+                            ref_name = ref_match.reference_name
+                    else:
+                        raw_match = ref_match
+                        cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
+                        cand_bbox = ref_match.bbox
+                        cand_center = ref_match.center
+                        ref_name = ref_match.reference_name
 
         # 2. HSV Color Verification Fallback if no reference match
         if not cand_bbox:

@@ -166,9 +166,18 @@ class MiningPerceptionEngine:
 
         # 4. Yellow Glow Detection (High frequency: every tick)
         t0 = time.perf_counter()
+        yellow_roi = None
+        if confirmed_player_center:
+            px, py = confirmed_player_center
+            rx = max(gx, px - 140)
+            ry = max(top_offset, py - 140)
+            yellow_roi = (rx, ry, min(w - rx, 280), min(h - ry, 280))
+        else:
+            yellow_roi = world_roi
+
         result.yellow_glow = self.yellow_detector.detect(
             frame,
-            roi_bbox=world_roi,
+            roi_bbox=yellow_roi,
             player_center=confirmed_player_center,
             reference_manager=self.reference_manager,
             gray_image=gray_frame,
@@ -182,12 +191,9 @@ class MiningPerceptionEngine:
         scales = [self.player_detector._locked_scale, 1.0] if self.player_detector._locked_scale else None
         if confirmed_player_center and self.reference_manager is not None:
             px, py = confirmed_player_center
-            target_search_roi = (
-                max(0, px - 120),
-                max(0, py - 120),
-                min(w - max(0, px - 120), 240),
-                min(h - max(0, py - 120), 240)
-            )
+            rx = max(gx, px - 120)
+            ry = max(top_offset, py - 120)
+            target_search_roi = (rx, ry, min(w - rx, 240), min(h - ry, 240))
             # Find matching rock iteration reference in player vicinity
             rock_matches = self.reference_manager.find_all_matches(
                 frame,
