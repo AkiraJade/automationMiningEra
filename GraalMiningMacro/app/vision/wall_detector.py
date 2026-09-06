@@ -32,6 +32,7 @@ class WallDetector:
         frame: np.ndarray,
         player_center: Optional[Tuple[int, int]] = None,
         world_roi: Optional[Tuple[int, int, int, int]] = None,
+        facing_direction: Optional[str] = None,
     ) -> WallDetection:
         if frame is None or frame.size == 0 or not player_center:
             return WallDetection(detected=False, direction="UNKNOWN", confidence=0.0)
@@ -47,7 +48,7 @@ class WallDetector:
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
         # Mine wall dark tile thresholding
-        _, thresh = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY_INV)
+        _, thresh = cv2.threshold(gray, 55, 255, cv2.THRESH_BINARY_INV)
 
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -58,10 +59,10 @@ class WallDetector:
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if 150 <= area <= 12000:
+            if 100 <= area <= 60000:
                 x, y, w, h = cv2.boundingRect(cnt)
 
-                # Exclude contours that touch top/bottom window borders or HUD lines
+                # Exclude contours that touch outer window borders or HUD lines
                 if y < min_y or (y + h) > max_y or x < min_x or (x + w) > max_x:
                     continue
 
@@ -77,7 +78,7 @@ class WallDetector:
                 dist = float(np.sqrt(dx * dx + dy * dy))
 
                 # Determine relative direction within player proximity limit
-                if dist <= self.max_player_distance and dist < min_dist and dist > 10:
+                if dist <= self.max_player_distance and dist < min_dist and dist > 5:
                     min_dist = dist
                     best_wall_bbox = (x, y, w, h)
                     best_conf = min(1.0, area / 1000.0)
@@ -86,6 +87,21 @@ class WallDetector:
                         best_direction = "RIGHT" if dx > 0 else "LEFT"
                     else:
                         best_direction = "BOTTOM" if dy > 0 else "TOP"
+
+        # If facing_direction is known and no contour passed, use facing_direction prior
+        if (not best_wall_bbox or best_conf < self.confidence_threshold) and facing_direction and facing_direction != "UNKNOWN":
+            best_direction = facing_direction
+            best_conf = 0.65
+            min_dist = 30.0
+            r = 30
+            if facing_direction == "LEFT":
+                best_wall_bbox = (max(0, px - 60), max(0, py - 20), 40, 40)
+            elif facing_direction == "RIGHT":
+                best_wall_bbox = (min(width - 40, px + 20), max(0, py - 20), 40, 40)
+            elif facing_direction == "UP":
+                best_wall_bbox = (max(0, px - 20), max(0, py - 60), 40, 40)
+            elif facing_direction == "DOWN":
+                best_wall_bbox = (max(0, px - 20), min(height - 40, py + 20), 40, 40)
 
         if best_conf < self.confidence_threshold or not best_wall_bbox:
             return WallDetection(detected=False, direction="UNKNOWN", confidence=0.0)

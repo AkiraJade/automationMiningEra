@@ -121,7 +121,13 @@ class MiningPerceptionEngine:
         # 3. Wall Detection (High frequency: every tick)
         t0 = time.perf_counter()
         confirmed_player_center = result.player.center if (result.player.detected and getattr(result.player, 'player_state', '') == 'PLAYER_CONFIRMED') else None
-        result.wall = self.wall_detector.detect(frame, player_center=confirmed_player_center, world_roi=world_roi)
+        facing_dir = getattr(result.player, 'facing_direction', 'UNKNOWN')
+        result.wall = self.wall_detector.detect(
+            frame,
+            player_center=confirmed_player_center,
+            world_roi=world_roi,
+            facing_direction=facing_dir,
+        )
         result.detector_timings['wall'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 4. Yellow Glow Detection (High frequency: every tick)
@@ -139,6 +145,7 @@ class MiningPerceptionEngine:
         # 5. Target & Iteration Detection (High frequency: every tick)
         t0 = time.perf_counter()
         rock_match = None
+        scales = [self.player_detector._locked_scale, 1.0] if self.player_detector._locked_scale else None
         if confirmed_player_center and self.reference_manager is not None:
             px, py = confirmed_player_center
             target_search_roi = (
@@ -149,7 +156,13 @@ class MiningPerceptionEngine:
             )
             # Find matching rock iteration reference in player vicinity
             rock_matches = self.reference_manager.find_all_matches(
-                frame, category="rock", roi=target_search_roi, gray_image=gray_frame, match_cache=match_cache
+                frame,
+                category="rock",
+                roi=target_search_roi,
+                gray_image=gray_frame,
+                match_cache=match_cache,
+                candidate_scales=scales,
+                use_core=True,
             )
             if rock_matches:
                 rock_match = rock_matches[0]
@@ -185,6 +198,23 @@ class MiningPerceptionEngine:
             target_bbox = result.wall.bbox
             target_conf = result.wall.confidence
             rock_iter = 0
+
+        # Fallback target candidate based on player facing direction prior
+        if target_center is None and confirmed_player_center and facing_dir != "UNKNOWN":
+            px, py = confirmed_player_center
+            if facing_dir == "LEFT":
+                target_center = (px - 28, py)
+            elif facing_dir == "RIGHT":
+                target_center = (px + 28, py)
+            elif facing_dir == "UP":
+                target_center = (px, py - 28)
+            elif facing_dir == "DOWN":
+                target_center = (px, py + 28)
+
+            if target_center:
+                target_bbox = (max(0, target_center[0] - 15), max(0, target_center[1] - 15), 30, 30)
+                target_conf = max(0.60, result.player.confidence * 0.8)
+                rock_iter = 0
 
         result.target = self.target_detector.update_target(
             center=target_center,

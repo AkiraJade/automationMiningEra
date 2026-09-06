@@ -63,6 +63,7 @@ class SpiderDetector:
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None,
         world_roi: Optional[Tuple[int, int, int, int]] = None,
+        candidate_scales: Optional[List[float]] = None,
     ) -> SpiderDetection:
         if frame is None or frame.size == 0:
             self._consecutive_count = 0
@@ -79,7 +80,13 @@ class SpiderDetector:
         # 1. Reference Template Matching
         if reference_manager is not None:
             ref_match = reference_manager.find_best_match(
-                frame, category="spider", roi=world_roi, gray_image=gray_image, match_cache=match_cache
+                frame,
+                category="spider",
+                roi=world_roi,
+                gray_image=gray_image,
+                match_cache=match_cache,
+                candidate_scales=candidate_scales,
+                use_core=True,
             )
             if ref_match and ref_match.found:
                 raw_match = ref_match

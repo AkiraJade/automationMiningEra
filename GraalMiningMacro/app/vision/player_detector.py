@@ -21,6 +21,7 @@ class PlayerDetection:
     player_source: str = "NONE"                      # "REFERENCE", "YOLO", "HEURISTIC", "NONE"
     player_state: str = "PLAYER_NOT_FOUND"           # "PLAYER_CONFIRMED", "PLAYER_UNCERTAIN", "PLAYER_NOT_FOUND"
     is_heuristic: bool = False
+    facing_direction: str = "UNKNOWN"                # "LEFT", "RIGHT", "UP", "DOWN", "UNKNOWN"
     rejection_reason: str = ""
 
     def summary_text(self) -> str:
@@ -108,7 +109,7 @@ class PlayerDetector:
                         self._locked_scale = float(cand_match.scale)
                 elif self._last_center is None:
                     # Secondary fallback scales if primary missed and lost
-                    secondary_scales = [1.05, 0.95, 1.10, 0.90]
+                    secondary_scales = [1.05, 0.95]
                     cand_match2 = reference_manager.find_best_match(
                         frame,
                         category="player",
@@ -142,13 +143,25 @@ class PlayerDetector:
                     delta = self._calc_delta(center)
                     self._last_center = center
 
-                    # Determine drill equipment evidence directly from player reference template
+                    # Determine drill equipment evidence & facing direction directly from player reference template
                     ref_name_lower = ref_match.reference_name.lower()
+                    sub_lower = ref_match.subcategory.lower()
+
                     drill_equipped = None
                     if "drillequiped" in ref_name_lower or ref_match.subcategory == "mining":
                         drill_equipped = True
                     elif ref_match.reference_name in ["LEFT", "DOWN", "RIGHT", "UP"] or ref_match.subcategory in ["left", "down", "right", "up"]:
                         drill_equipped = False
+
+                    facing = "UNKNOWN"
+                    if "left" in ref_name_lower or "left" in sub_lower:
+                        facing = "LEFT"
+                    elif "right" in ref_name_lower or "right" in sub_lower:
+                        facing = "RIGHT"
+                    elif "up" in ref_name_lower or "up" in sub_lower:
+                        facing = "UP"
+                    elif "down" in ref_name_lower or "down" in sub_lower:
+                        facing = "DOWN"
 
                     return PlayerDetection(
                         detected=True,
@@ -161,6 +174,7 @@ class PlayerDetector:
                         matched_subcategory=ref_match.subcategory,
                         matched_reference_confidence=ref_match.confidence,
                         drill_equipped=drill_equipped,
+                        facing_direction=facing,
                         detection_method="TEMPLATE",
                         player_source="REFERENCE",
                         player_state="PLAYER_CONFIRMED",

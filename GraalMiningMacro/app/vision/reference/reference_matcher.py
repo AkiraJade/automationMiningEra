@@ -204,8 +204,29 @@ class ReferenceMatcher:
                         if img_h < scaled_ch or img_w < scaled_cw:
                             continue
                         scaled_core = cv2.resize(core_tpl, (scaled_cw, scaled_ch), interpolation=cv2.INTER_LINEAR)
-                        res_core = cv2.matchTemplate(search_gray, scaled_core, cv2.TM_CCOEFF_NORMED)
-                        _, max_val, _, max_loc = cv2.minMaxLoc(res_core)
+                        if img_w > 400 and img_h > 300 and scaled_cw >= 16 and scaled_ch >= 16:
+                            search_small = cv2.resize(search_gray, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+                            core_small = cv2.resize(scaled_core, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+                            res_c = cv2.matchTemplate(search_small, core_small, cv2.TM_CCOEFF_NORMED)
+                            _, mv_c, _, ml_c = cv2.minMaxLoc(res_c)
+                            if mv_c < 0.20:
+                                continue
+                            cx, cy = ml_c[0] * 2, ml_c[1] * 2
+                            margin = 24
+                            rx = max(0, cx - margin)
+                            ry = max(0, cy - margin)
+                            rw = min(img_w - rx, scaled_cw + margin * 2)
+                            rh = min(img_h - ry, scaled_ch + margin * 2)
+                            patch = search_gray[ry:ry+rh, rx:rx+rw]
+                            if patch.shape[0] >= scaled_ch and patch.shape[1] >= scaled_cw:
+                                res_core = cv2.matchTemplate(patch, scaled_core, cv2.TM_CCOEFF_NORMED)
+                                _, max_val, _, ml_f = cv2.minMaxLoc(res_core)
+                                max_loc = (rx + ml_f[0], ry + ml_f[1])
+                            else:
+                                max_val, max_loc = float(mv_c), (cx, cy)
+                        else:
+                            res_core = cv2.matchTemplate(search_gray, scaled_core, cv2.TM_CCOEFF_NORMED)
+                            _, max_val, _, max_loc = cv2.minMaxLoc(res_core)
 
                         full_w = max(1, int(tpl_gray.shape[1] * s))
                         full_h = max(1, int(tpl_gray.shape[0] * s))
@@ -326,7 +347,9 @@ class ReferenceMatcher:
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None,
-        multi_scale: bool = False
+        multi_scale: bool = False,
+        candidate_scales: Optional[List[float]] = None,
+        use_core: bool = False,
     ) -> List[ReferenceMatchResult]:
         """Matches all enabled references in a category against image, returning sorted matches."""
         results: List[ReferenceMatchResult] = []
@@ -334,7 +357,14 @@ class ReferenceMatcher:
 
         for ref in references:
             res = self.match_single(
-                image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
+                image,
+                ref,
+                roi=roi,
+                gray_image=gray_image,
+                match_cache=match_cache,
+                multi_scale=multi_scale,
+                candidate_scales=candidate_scales,
+                use_core=use_core,
             )
             if res.found:
                 results.append(res)
@@ -350,7 +380,9 @@ class ReferenceMatcher:
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None,
-        multi_scale: bool = False
+        multi_scale: bool = False,
+        candidate_scales: Optional[List[float]] = None,
+        use_core: bool = False,
     ) -> List[ReferenceMatchResult]:
         """Matches all enabled references across all categories against image."""
         results: List[ReferenceMatchResult] = []
@@ -359,7 +391,14 @@ class ReferenceMatcher:
         for ref in all_refs:
             if ref.enabled:
                 res = self.match_single(
-                    image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
+                    image,
+                    ref,
+                    roi=roi,
+                    gray_image=gray_image,
+                    match_cache=match_cache,
+                    multi_scale=multi_scale,
+                    candidate_scales=candidate_scales,
+                    use_core=use_core,
                 )
                 if res.found:
                     results.append(res)

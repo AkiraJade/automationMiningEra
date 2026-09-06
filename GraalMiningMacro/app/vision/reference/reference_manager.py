@@ -63,7 +63,9 @@ class ReferenceManager:
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None,
-        multi_scale: bool = False
+        multi_scale: bool = False,
+        candidate_scales: Optional[List[float]] = None,
+        use_core: bool = False,
     ) -> List[ReferenceMatchResult]:
         """Returns all reference matches across categories or within a specific category."""
         if image is None or image.size == 0:
@@ -71,9 +73,24 @@ class ReferenceManager:
 
         if category:
             return self.matcher.match_all_in_category(
-                image, category, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
+                image,
+                category,
+                self.registry,
+                roi=roi,
+                gray_image=gray_image,
+                match_cache=match_cache,
+                multi_scale=multi_scale,
+                candidate_scales=candidate_scales,
+                use_core=use_core,
             )
         else:
             return self.matcher.match_all(
-                image, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
+                image,
+                self.registry,
+                roi=roi,
+                gray_image=gray_image,
+                match_cache=match_cache,
+                multi_scale=multi_scale,
+                candidate_scales=candidate_scales,
+                use_core=use_core,
             )

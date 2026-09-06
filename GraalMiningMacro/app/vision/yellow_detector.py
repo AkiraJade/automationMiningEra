@@ -61,7 +61,8 @@ class YellowGlowDetector:
         target_center: Optional[Tuple[int, int]] = None,
         reference_manager: Optional[object] = None,
         gray_image: Optional[np.ndarray] = None,
-        match_cache: Optional[dict] = None
+        match_cache: Optional[dict] = None,
+        candidate_scales: Optional[List[float]] = None,
     ) -> YellowGlowDetectionResult:
         if frame is None or frame.size == 0:
             self._consecutive_count = 0
@@ -78,7 +79,14 @@ class YellowGlowDetector:
         # 1. Reference Template Matching for Completed Yellow Rock
         if reference_manager is not None:
             ref_match = reference_manager.find_best_match(
-                frame, category="rock", subcategory="yellow_complete", roi=roi_bbox, gray_image=gray_image, match_cache=match_cache
+                frame,
+                category="rock",
+                subcategory="yellow_complete",
+                roi=roi_bbox,
+                gray_image=gray_image,
+                match_cache=match_cache,
+                candidate_scales=candidate_scales,
+                use_core=True,
             )
             if ref_match and ref_match.found and "yellow" in (ref_match.subcategory + ref_match.reference_name).lower():
                 raw_match = ref_match
