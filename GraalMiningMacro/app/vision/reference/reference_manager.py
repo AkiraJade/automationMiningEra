@@ -25,7 +25,9 @@ class ReferenceManager:
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None,
-        multi_scale: bool = False
+        multi_scale: bool = False,
+        candidate_scales: Optional[List[float]] = None,
+        use_core: bool = False,
     ) -> Optional[ReferenceMatchResult]:
         """Finds the highest confidence match in a category (and optional subcategory)."""
         if image is None or image.size == 0:
@@ -39,7 +41,14 @@ class ReferenceManager:
 
         for ref in refs:
             match_res = self.matcher.match_single(
-                image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache, multi_scale=multi_scale
+                image,
+                ref,
+                roi=roi,
+                gray_image=gray_image,
+                match_cache=match_cache,
+                multi_scale=multi_scale,
+                candidate_scales=candidate_scales,
+                use_core=use_core,
             )
             if match_res.found:
                 if best_match is None or match_res.confidence > best_match.confidence:

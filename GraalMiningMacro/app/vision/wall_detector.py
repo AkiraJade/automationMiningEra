@@ -65,6 +65,10 @@ class WallDetector:
                 if y < min_y or (y + h) > max_y or x < min_x or (x + w) > max_x:
                     continue
 
+                # Exclude oversized horizontal or vertical letterbox bars
+                if w > width * 0.85 or h > height * 0.85:
+                    continue
+
                 cx = x + w // 2
                 cy = y + h // 2
 

@@ -77,7 +77,9 @@ class ReferenceMatcher:
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[Dict[Tuple[str, Optional[Tuple[int, int, int, int]]], ReferenceMatchResult]] = None,
-        multi_scale: bool = False
+        multi_scale: bool = False,
+        candidate_scales: Optional[List[float]] = None,
+        use_core: bool = False,
     ) -> ReferenceMatchResult:
         """Evaluates a single ReferenceImage against an image frame (or ROI)."""
         if not ref.enabled or image is None or image.size == 0:
@@ -139,29 +141,41 @@ class ReferenceMatcher:
             img_h, img_w = search_gray.shape[:2]
 
             # Multi-scale setup
-            scales_to_test = [1.0]
-            if multi_scale:
+            if candidate_scales is not None:
+                scales_to_test = candidate_scales
+            elif multi_scale:
                 min_s = getattr(config, "MIN_SCALE", 0.85)
                 max_s = getattr(config, "MAX_SCALE", 1.15)
                 step_s = getattr(config, "SCALE_STEP", 0.05)
                 scales_to_test = list(np.arange(min_s, max_s + 1e-5, step_s))
-                # Ensure 1.0 is checked first for performance short-circuiting
                 scales_to_test = sorted(scales_to_test, key=lambda s: abs(s - 1.0))
+            else:
+                scales_to_test = [1.0]
 
             best_max_val = -1.0
             best_max_loc = (0, 0)
             best_scale = 1.0
             best_tpl_w, best_tpl_h = tpl_gray.shape[1], tpl_gray.shape[0]
 
-            # Coarse-to-fine fast path for large search images on single-scale ticks
-            if not multi_scale and img_w > 500 and img_h > 300 and best_tpl_w >= 20 and best_tpl_h >= 20:
+            # Prepare core template if requested (stripping variable outer terrain borders)
+            if use_core and tpl_gray.shape[0] >= 24 and tpl_gray.shape[1] >= 24:
+                h_t, w_t = tpl_gray.shape[:2]
+                my = max(1, int(h_t * 0.12))
+                mx = max(1, int(w_t * 0.10))
+                core_tpl = tpl_gray[my:h_t - my, mx:w_t - mx]
+            else:
+                core_tpl = tpl_gray
+                my, mx = 0, 0
+
+            # Coarse-to-fine fast path ONLY for large full-screen unscaled single-pass ticks without core
+            if not multi_scale and not candidate_scales and not use_core and img_w > 500 and img_h > 300 and best_tpl_w >= 20 and best_tpl_h >= 20:
                 search_small = cv2.resize(search_gray, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
                 tpl_small = cv2.resize(tpl_gray, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
                 res_c = cv2.matchTemplate(search_small, tpl_small, cv2.TM_CCOEFF_NORMED)
                 _, mv_c, _, ml_c = cv2.minMaxLoc(res_c)
 
-                if mv_c < max(0.20, float(ref.threshold) - 0.22):
-                    # No potential candidate: instant early-exit without full resolution scan
+                if mv_c < 0.20:
+                    # Negligible candidate: early exit
                     best_max_val = float(mv_c)
                     best_max_loc = (ml_c[0] * 2, ml_c[1] * 2)
                 else:
@@ -183,26 +197,58 @@ class ReferenceMatcher:
                         best_max_loc = (cx, cy)
             else:
                 for s in scales_to_test:
-                    scaled_tpl = self._get_scaled_template(ref.file_path, s)
-                    if scaled_tpl is None:
-                        continue
+                    if use_core and (mx > 0 or my > 0):
+                        ch, cw = core_tpl.shape[:2]
+                        scaled_cw = max(1, int(cw * s))
+                        scaled_ch = max(1, int(ch * s))
+                        if img_h < scaled_ch or img_w < scaled_cw:
+                            continue
+                        scaled_core = cv2.resize(core_tpl, (scaled_cw, scaled_ch), interpolation=cv2.INTER_LINEAR)
+                        res_core = cv2.matchTemplate(search_gray, scaled_core, cv2.TM_CCOEFF_NORMED)
+                        _, max_val, _, max_loc = cv2.minMaxLoc(res_core)
 
-                    th, tw = scaled_tpl.shape[:2]
-                    if img_h < th or img_w < tw:
-                        continue
+                        full_w = max(1, int(tpl_gray.shape[1] * s))
+                        full_h = max(1, int(tpl_gray.shape[0] * s))
+                        full_x = max(0, min(img_w - full_w, max_loc[0] - int(mx * s)))
+                        full_y = max(0, min(img_h - full_h, max_loc[1] - int(my * s)))
 
-                    res = cv2.matchTemplate(search_gray, scaled_tpl, cv2.TM_CCOEFF_NORMED)
-                    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                        eff_score = float(max_val)
+                        if full_y + full_h <= img_h and full_x + full_w <= img_w:
+                            patch = search_gray[full_y:full_y + full_h, full_x:full_x + full_w]
+                            scaled_full = self._get_scaled_template(ref.file_path, s)
+                            if scaled_full is not None and patch.shape == scaled_full.shape:
+                                res_full = cv2.matchTemplate(patch, scaled_full, cv2.TM_CCOEFF_NORMED)
+                                score_full = float(res_full[0, 0])
+                                eff_score = max(eff_score, score_full)
 
-                    if max_val > best_max_val:
-                        best_max_val = float(max_val)
-                        best_max_loc = max_loc
-                        best_scale = float(s)
-                        best_tpl_w, best_tpl_h = tw, th
+                        if eff_score > best_max_val:
+                            best_max_val = eff_score
+                            best_max_loc = (full_x, full_y)
+                            best_scale = float(s)
+                            best_tpl_w, best_tpl_h = full_w, full_h
 
-                    # Short-circuit if scale=1.0 has excellent match (>= 0.80) or extremely poor match (< 0.15)
-                    if abs(s - 1.0) < 1e-3 and (best_max_val >= 0.80 or best_max_val < 0.15):
-                        break
+                        if best_max_val >= 0.75:
+                            break
+                    else:
+                        scaled_tpl = self._get_scaled_template(ref.file_path, s)
+                        if scaled_tpl is None:
+                            continue
+
+                        th, tw = scaled_tpl.shape[:2]
+                        if img_h < th or img_w < tw:
+                            continue
+
+                        res = cv2.matchTemplate(search_gray, scaled_tpl, cv2.TM_CCOEFF_NORMED)
+                        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+
+                        if max_val > best_max_val:
+                            best_max_val = float(max_val)
+                            best_max_loc = max_loc
+                            best_scale = float(s)
+                            best_tpl_w, best_tpl_h = tw, th
+
+                        if abs(s - 1.0) < 1e-3 and (best_max_val >= 0.80 or best_max_val < 0.15):
+                            break
 
             if best_max_val < 0.0:
                 res_small = ReferenceMatchResult(

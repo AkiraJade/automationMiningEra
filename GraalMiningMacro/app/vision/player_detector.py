@@ -40,10 +40,11 @@ class PlayerDetector:
     PLAYER_MIN_MATCH_SIZE: int = 12
     PLAYER_MAX_MATCH_SIZE: int = 120
 
-    def __init__(self, confidence_threshold: float = 0.65, allow_heuristic_fallback: bool = True):
+    def __init__(self, confidence_threshold: float = 0.58, allow_heuristic_fallback: bool = True):
         self.confidence_threshold = confidence_threshold
         self.allow_heuristic_fallback = allow_heuristic_fallback
         self._last_center: Optional[Tuple[int, int]] = None
+        self._locked_scale: float = 1.0
 
     def detect(
         self,
@@ -63,23 +64,75 @@ class PlayerDetector:
         # 1. REFERENCE TEMPLATE MATCHING (PRIMARY DETECTOR)
         if reference_manager is not None:
             ref_match = None
+
             # Fast local tracking window if player was previously detected
             if self._last_center is not None:
                 lcx, lcy = self._last_center
-                track_w, track_h = 300, 300
+                track_w, track_h = 320, 320
                 track_x = max(0, min(lcx - track_w // 2, width - track_w))
                 track_y = max(0, min(lcy - track_h // 2, height - track_h))
                 track_roi = (track_x, track_y, min(width - track_x, track_w), min(height - track_y, track_h))
                 cand_match = reference_manager.find_best_match(
-                    frame, category="player", roi=track_roi, gray_image=gray_image, match_cache=match_cache
+                    frame,
+                    category="player",
+                    roi=track_roi,
+                    gray_image=gray_image,
+                    match_cache=match_cache,
+                    candidate_scales=[self._locked_scale],
+                    use_core=True,
                 )
                 if cand_match and cand_match.found and cand_match.confidence >= self.confidence_threshold:
                     ref_match = cand_match
 
-            # Fall back to full world_roi search if tracking missed or lost
+            # Central viewport search prior (Graal camera keeps player centered in cave)
             if ref_match is None:
+                cx, cy = width // 2, height // 2
+                cw, ch = int(width * 0.50), int(height * 0.55)
+                central_roi = (max(0, cx - cw // 2), max(0, cy - ch // 2), min(width, cw), min(height, ch))
+
+                # Primary scales: locked scale and native 1.0
+                primary_scales = [self._locked_scale] if abs(self._locked_scale - 1.0) < 1e-3 else [self._locked_scale, 1.0]
+
+                cand_match = reference_manager.find_best_match(
+                    frame,
+                    category="player",
+                    roi=central_roi,
+                    gray_image=gray_image,
+                    match_cache=match_cache,
+                    candidate_scales=primary_scales,
+                    use_core=True,
+                )
+                if cand_match and cand_match.found and cand_match.confidence >= self.confidence_threshold:
+                    ref_match = cand_match
+                    if getattr(cand_match, "scale", 1.0) > 0.1:
+                        self._locked_scale = float(cand_match.scale)
+                elif self._last_center is None:
+                    # Secondary fallback scales if primary missed and lost
+                    secondary_scales = [1.05, 0.95, 1.10, 0.90]
+                    cand_match2 = reference_manager.find_best_match(
+                        frame,
+                        category="player",
+                        roi=central_roi,
+                        gray_image=gray_image,
+                        match_cache=match_cache,
+                        candidate_scales=secondary_scales,
+                        use_core=True,
+                    )
+                    if cand_match2 and cand_match2.found and cand_match2.confidence >= self.confidence_threshold:
+                        ref_match = cand_match2
+                        if getattr(cand_match2, "scale", 1.0) > 0.1:
+                            self._locked_scale = float(cand_match2.scale)
+
+            # Fall back to full world_roi search if tracking missed or lost
+            if ref_match is None and world_roi is not None:
                 ref_match = reference_manager.find_best_match(
-                    frame, category="player", roi=world_roi, gray_image=gray_image, match_cache=match_cache
+                    frame,
+                    category="player",
+                    roi=world_roi,
+                    gray_image=gray_image,
+                    match_cache=match_cache,
+                    candidate_scales=[self._locked_scale, 1.0],
+                    use_core=True,
                 )
 
             if ref_match and ref_match.found and ref_match.confidence >= self.confidence_threshold:
