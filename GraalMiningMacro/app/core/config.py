@@ -53,7 +53,7 @@ class TimingConfig:
 @dataclass
 class VisionConfig:
     perception_fps: int = 10
-    player_confidence_threshold: float = 0.65
+    player_confidence_threshold: float = 0.48
     target_confidence_threshold: float = 0.60
     spider_confidence_threshold: float = 0.70
     yellow_glow_hsv_min: list[int] = field(default_factory=lambda: [15, 120, 150])
@@ -66,7 +66,7 @@ class VisionConfig:
     min_scale: float = 0.90
     max_scale: float = 1.10
     scale_step: float = 0.05
-    minimum_match_confidence: float = 0.65
+    minimum_match_confidence: float = 0.48
     minimum_match_size: list[int] = field(default_factory=lambda: [12, 12])
     maximum_match_size: list[int] = field(default_factory=lambda: [150, 150])
     spider_confirm_frames: int = 2

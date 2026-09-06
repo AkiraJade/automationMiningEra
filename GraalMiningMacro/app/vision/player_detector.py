@@ -43,7 +43,7 @@ class PlayerDetector:
 
     def __init__(
         self,
-        confidence_threshold: float = 0.58,
+        confidence_threshold: float = 0.48,
         allow_heuristic_fallback: bool = True,
     ):
         self.confidence_threshold = confidence_threshold
@@ -66,7 +66,7 @@ class PlayerDetector:
 
         height, width = frame.shape[:2]
 
-        min_y = 40 if height > 300 else 0
+        min_y = 45 if height > 300 else 0
 
         # Compute camera center prior (centered on game canvas inside viewport)
         if world_roi is not None:
@@ -104,7 +104,7 @@ class PlayerDetector:
 
             # Central viewport search prior (Graal camera keeps player centered in cave)
             if ref_match is None:
-                cw, ch = int(width * 0.50), int(height * 0.55)
+                cw, ch = int(width * 0.60), int(height * 0.65)
                 rx_start = max(0, cam_cx - cw // 2)
                 ry_start = max(min_y, cam_cy - ch // 2)
                 central_roi = (rx_start, ry_start, min(width - rx_start, cw), min(height - ry_start, ch))
@@ -142,17 +142,20 @@ class PlayerDetector:
                         if getattr(cand_match2, "scale", 1.0) > 0.1:
                             self._locked_scale = float(cand_match2.scale)
 
-            # Fall back to full world_roi search if tracking missed or lost
-            if ref_match is None and world_roi is not None:
-                ref_match = reference_manager.find_best_match(
+            # Fall back to full viewport / world_roi search if tracking missed or lost
+            if ref_match is None:
+                full_roi = world_roi if world_roi is not None else (0, min_y, width, height - min_y)
+                cand_match3 = reference_manager.find_best_match(
                     frame,
                     category="player",
-                    roi=world_roi,
+                    roi=full_roi,
                     gray_image=gray_image,
                     match_cache=match_cache,
                     candidate_scales=[self._locked_scale, 1.0],
                     use_core=True,
                 )
+                if cand_match3 and cand_match3.found and cand_match3.confidence >= self.confidence_threshold:
+                    ref_match = cand_match3
 
             if ref_match and ref_match.found and ref_match.confidence >= self.confidence_threshold:
                 center = ref_match.center

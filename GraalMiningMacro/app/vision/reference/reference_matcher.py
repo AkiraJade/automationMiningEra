@@ -259,8 +259,31 @@ class ReferenceMatcher:
                         if img_h < th or img_w < tw:
                             continue
 
-                        res = cv2.matchTemplate(search_gray, scaled_tpl, cv2.TM_CCOEFF_NORMED)
-                        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                        if img_w > 400 and img_h > 300 and tw >= 16 and th >= 16:
+                            search_small = cv2.resize(search_gray, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+                            tpl_small = cv2.resize(scaled_tpl, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+                            res_c = cv2.matchTemplate(search_small, tpl_small, cv2.TM_CCOEFF_NORMED)
+                            _, mv_c, _, ml_c = cv2.minMaxLoc(res_c)
+                            if mv_c < 0.20:
+                                max_val = float(mv_c)
+                                max_loc = (ml_c[0] * 2, ml_c[1] * 2)
+                            else:
+                                cx, cy = ml_c[0] * 2, ml_c[1] * 2
+                                margin = 32
+                                rx = max(0, cx - margin)
+                                ry = max(0, cy - margin)
+                                rw = min(img_w - rx, tw + margin * 2)
+                                rh = min(img_h - ry, th + margin * 2)
+                                patch = search_gray[ry:ry+rh, rx:rx+rw]
+                                if patch.shape[0] >= th and patch.shape[1] >= tw:
+                                    res_f = cv2.matchTemplate(patch, scaled_tpl, cv2.TM_CCOEFF_NORMED)
+                                    _, max_val, _, ml_f = cv2.minMaxLoc(res_f)
+                                    max_loc = (rx + ml_f[0], ry + ml_f[1])
+                                else:
+                                    max_val, max_loc = float(mv_c), (cx, cy)
+                        else:
+                            res = cv2.matchTemplate(search_gray, scaled_tpl, cv2.TM_CCOEFF_NORMED)
+                            _, max_val, _, max_loc = cv2.minMaxLoc(res)
 
                         if max_val > best_max_val:
                             best_max_val = float(max_val)
@@ -294,9 +317,8 @@ class ReferenceMatcher:
             center_x = match_x + best_tpl_w // 2
             center_y = match_y + best_tpl_h // 2
 
-            min_conf = getattr(config, "MINIMUM_MATCH_CONFIDENCE", 0.65)
             thresh = float(ref.threshold)
-            found = (best_max_val >= thresh) and (best_max_val >= min_conf)
+            found = (best_max_val >= thresh)
 
             rejection_reason = ""
             if not found:

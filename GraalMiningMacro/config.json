@@ -27,7 +27,7 @@
     },
     "vision": {
         "perception_fps": 10,
-        "player_confidence_threshold": 0.65,
+        "player_confidence_threshold": 0.48,
         "target_confidence_threshold": 0.6,
         "spider_confidence_threshold": 0.7,
         "yellow_glow_hsv_min": [
@@ -42,7 +42,28 @@
         ],
         "yolo_model_path": "models/graal_mining.pt",
         "yolo_device": "cpu",
-        "debug_overlay_enabled": true
+        "debug_overlay_enabled": true,
+        "min_scale": 0.9,
+        "max_scale": 1.1,
+        "scale_step": 0.05,
+        "minimum_match_confidence": 0.48,
+        "minimum_match_size": [
+            12,
+            12
+        ],
+        "maximum_match_size": [
+            150,
+            150
+        ],
+        "spider_confirm_frames": 2,
+        "spider_max_distance": 800.0,
+        "yellow_confirm_frames": 3,
+        "playable_world_roi": [
+            0.05,
+            0.05,
+            0.9,
+            0.85
+        ]
     },
     "safety": {
         "dry_run": true,

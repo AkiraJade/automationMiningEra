@@ -224,6 +224,9 @@ class DashboardPage(QWidget):
         elif health_status == "SLOW":
             self._set_val(self.val_health, "SLOW")
             self.val_health.setStyleSheet("QLabel { color: #FFD600; background: transparent; border: none; }")
+        elif health_status == "OVERLOADED":
+            self._set_val(self.val_health, "OVERLOADED")
+            self.val_health.setStyleSheet("QLabel { color: #FF9800; background: transparent; border: none; }")
         else:
             self._set_val(self.val_health, "ERROR")
             self.val_health.setStyleSheet("QLabel { color: #FF1744; background: transparent; border: none; }")
