@@ -25,7 +25,8 @@ class TargetDetection:
             return "TARGET: UNKNOWN"
         if self.is_completed or self.target_state == "YELLOW_COMPLETE":
             return "TARGET: YELLOW COMPLETED"
-        return f"TARGET ({self.confidence * 100:.0f}%) [{self.target_state}] ITER: {self.iteration}/3"
+        iter_str = f"{self.iteration}/3" if self.iteration > 0 else "UNKNOWN"
+        return f"TARGET ({self.confidence * 100:.0f}%) [{self.target_state}] ITER: {iter_str}"
 
 
 class TargetDetector:

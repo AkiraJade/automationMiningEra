@@ -57,6 +57,8 @@ class YellowGlowDetector:
         self,
         frame: np.ndarray,
         roi_bbox: Optional[Tuple[int, int, int, int]] = None,
+        player_center: Optional[Tuple[int, int]] = None,
+        target_center: Optional[Tuple[int, int]] = None,
         reference_manager: Optional[object] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None
@@ -64,6 +66,8 @@ class YellowGlowDetector:
         if frame is None or frame.size == 0:
             self._consecutive_count = 0
             return YellowGlowDetectionResult(required_frames=self.required_frames)
+
+        height, width = frame.shape[:2]
 
         raw_match = None
         cand_bbox = None
@@ -76,11 +80,6 @@ class YellowGlowDetector:
             ref_match = reference_manager.find_best_match(
                 frame, category="rock", subcategory="yellow_complete", roi=roi_bbox, gray_image=gray_image, match_cache=match_cache
             )
-            if not ref_match or not ref_match.found:
-                ref_match = reference_manager.find_best_match(
-                    frame, category="rock", roi=roi_bbox, gray_image=gray_image, match_cache=match_cache
-                )
-
             if ref_match and ref_match.found and "yellow" in (ref_match.subcategory + ref_match.reference_name).lower():
                 raw_match = ref_match
                 cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
@@ -90,6 +89,19 @@ class YellowGlowDetector:
 
         # 2. HSV Color Verification Fallback if no reference match
         if not cand_bbox:
+            # Color fallback requires a confirmed player or target position to bind spatial relationship
+            if not player_center and not target_center:
+                self._consecutive_count = 0
+                self._last_bbox = None
+                self._last_center = None
+                return YellowGlowDetectionResult(
+                    detected_raw=False,
+                    is_confirmed=False,
+                    consecutive_frames=0,
+                    required_frames=self.required_frames,
+                    rejection_reason="UNCONFIRMED_PLAYER_OR_TARGET",
+                )
+
             target_frame = frame
             offset_x, offset_y = 0, 0
             if roi_bbox:
@@ -109,15 +121,36 @@ class YellowGlowDetector:
             best_area = 0
             for cnt in contours:
                 area = int(cv2.contourArea(cnt))
-                if area >= self.min_area:
+                if 30 <= area <= 2500:
                     x, y, w, h = cv2.boundingRect(cnt)
-                    x += offset_x
-                    y += offset_y
+                    abs_x = x + offset_x
+                    abs_y = y + offset_y
+
+                    # Exclusion Zone 1: Top HUD (y < 15% height) and Status Panel for full frames (height >= 250)
+                    if height >= 250 and (abs_y < int(height * 0.15) or (abs_x < int(width * 0.35) and abs_y < int(height * 0.25))):
+                        continue
+
+                    # Exclusion Zone 2: Lower Message Banner / DANGER Sign Area (y > 75% height)
+                    if height >= 250 and abs_y > int(height * 0.75):
+                        continue
+
+                    # Aspect ratio check: rock completion visual is roughly square (0.4 to 2.2)
+                    aspect_ratio = w / float(h) if h > 0 else 0
+                    if not (0.4 <= aspect_ratio <= 2.2):
+                        continue
+
+                    # Spatial Binding Check: Must be near player/target if player position provided
+                    cx, cy = abs_x + w // 2, abs_y + h // 2
+                    if player_center and player_center[0] > 0 and player_center[1] > 0:
+                        dist_p = np.sqrt((cx - player_center[0])**2 + (cy - player_center[1])**2)
+                        if dist_p > 120.0:  # Completed rock must be within immediate mining proximity of player
+                            continue
+
                     conf = min(1.0, area / 180.0)
                     if area > best_area:
                         best_area = area
-                        cand_bbox = (x, y, w, h)
-                        cand_center = (x + w // 2, y + h // 2)
+                        cand_bbox = (abs_x, abs_y, w, h)
+                        cand_center = (cx, cy)
                         cand_raw_score = conf
 
         if cand_bbox and cand_raw_score >= 0.50:

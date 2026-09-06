@@ -56,49 +56,48 @@ class MessageDetector:
             )
 
         h, w = frame.shape[:2]
-        hud_roi = roi if roi else (0, 0, w, int(h * 0.20))
+        rois_to_check = [roi] if roi else [(0, 0, w, int(h * 0.35)), (0, int(h * 0.60), w, int(h * 0.40))]
 
         # 1. Reference Template Matching
         if reference_manager is not None:
-            ref_match = reference_manager.find_best_match(
-                frame, category="messages", roi=hud_roi, gray_image=gray_image, match_cache=match_cache
-            )
-            if not ref_match or not ref_match.found:
+            for check_roi in rois_to_check:
                 ref_match = reference_manager.find_best_match(
-                    frame, category="messages", gray_image=gray_image, match_cache=match_cache
+                    frame, category="messages", roi=check_roi, gray_image=gray_image, match_cache=match_cache
                 )
+                if ref_match and ref_match.found:
+                    self._cooldown_until = now + self.default_cooldown_seconds
+                    self._last_matched_ref = ref_match.reference_name
 
-            if ref_match and ref_match.found:
-                self._cooldown_until = now + self.default_cooldown_seconds
-                self._last_matched_ref = ref_match.reference_name
+                    return self._build_result(
+                        detected=True,
+                        confidence=ref_match.confidence,
+                        text="Nothing to Mine Here",
+                        ref_name=ref_match.reference_name
+                    )
 
-                return self._build_result(
-                    detected=True,
-                    confidence=ref_match.confidence,
-                    text="Nothing to Mine Here",
-                    ref_name=ref_match.reference_name
-                )
-
-        # 2. Check template / text banner heuristic (Message ROI)
-        rx, ry, rw, rh = hud_roi
-        hud_img = frame[ry:ry+rh, rx:rx+rw]
-        gray = cv2.cvtColor(hud_img, cv2.COLOR_BGR2GRAY) if len(hud_img.shape) == 3 else hud_img
-        _, text_thresh = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
-
-        contours, _ = cv2.findContours(text_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
+        # 2. Check template / text banner heuristic across search ROIs
         banner_found = False
         conf = 0.0
 
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if area > 150:
-                x, y, bw, bh = cv2.boundingRect(cnt)
-                aspect_ratio = bw / float(bh) if bh > 0 else 0
-                if aspect_ratio > 3.5 and bw > 100:
-                    banner_found = True
-                    conf = min(1.0, area / 400.0)
-                    break
+        for check_roi in rois_to_check:
+            rx, ry, rw, rh = check_roi
+            hud_img = frame[ry:ry+rh, rx:rx+rw]
+            gray = cv2.cvtColor(hud_img, cv2.COLOR_BGR2GRAY) if len(hud_img.shape) == 3 else hud_img
+            _, text_thresh = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
+
+            contours, _ = cv2.findContours(text_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area > 150:
+                    x, y, bw, bh = cv2.boundingRect(cnt)
+                    aspect_ratio = bw / float(bh) if bh > 0 else 0
+                    if aspect_ratio > 3.5 and bw > 100:
+                        banner_found = True
+                        conf = min(1.0, area / 400.0)
+                        break
+            if banner_found:
+                break
 
         if banner_found:
             self._cooldown_until = now + self.default_cooldown_seconds

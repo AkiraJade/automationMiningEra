@@ -13,18 +13,18 @@ def test_yellow_glow_temporal_confirmation():
     yellow_frame[20:60, 20:60] = [0, 255, 255]  # BGR Yellow
 
     # Frame 1: Accumulating (1/3)
-    res1 = detector.detect(yellow_frame)
+    res1 = detector.detect(yellow_frame, player_center=(40, 40))
     assert res1.detected_raw is True
     assert res1.consecutive_frames == 1
     assert res1.is_confirmed is False
 
     # Frame 2: Accumulating (2/3)
-    res2 = detector.detect(yellow_frame)
+    res2 = detector.detect(yellow_frame, player_center=(40, 40))
     assert res2.consecutive_frames == 2
     assert res2.is_confirmed is False
 
     # Frame 3: Confirmed (3/3)
-    res3 = detector.detect(yellow_frame)
+    res3 = detector.detect(yellow_frame, player_center=(40, 40))
     assert res3.consecutive_frames == 3
     assert res3.is_confirmed is True
 

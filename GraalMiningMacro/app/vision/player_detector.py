@@ -106,7 +106,7 @@ class PlayerDetector:
                         is_heuristic=False,
                     )
 
-        # 3. EXPLICIT CENTER HEURISTIC FALLBACK (Labeled clearly as HEURISTIC with low confidence 0.30)
+        # 3. EXPLICIT CENTER HEURISTIC FALLBACK (Labeled clearly as HEURISTIC with low confidence 0.30, NOT detected)
         if self.allow_heuristic_fallback:
             cx, cy = width // 2, height // 2
             pw, ph = 36, 48

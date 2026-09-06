@@ -99,8 +99,8 @@ class MiningPerceptionEngine:
 
         # Compute category relative operational ROIs
         h, w = frame.shape[:2]
-        world_roi = (int(w * 0.0), int(h * 0.15), int(w * 1.0), int(h * 0.70))
-        message_roi = (int(w * 0.0), int(h * 0.0), int(w * 1.0), int(h * 0.20))
+        world_roi = (int(w * 0.0), int(h * 0.15), int(w * 1.0), int(h * 0.60))
+        message_roi = (int(w * 0.10), int(h * 0.65), int(w * 0.80), int(h * 0.30))
         status_roi = (int(w * 0.0), int(h * 0.0), int(w * 0.40), int(h * 0.25))
 
         # 1. YOLO Detections (if model loaded)
@@ -120,7 +120,8 @@ class MiningPerceptionEngine:
 
         # 3. Wall Detection (High frequency: every tick)
         t0 = time.perf_counter()
-        result.wall = self.wall_detector.detect(frame, player_center=result.player.center, world_roi=world_roi)
+        confirmed_player_center = result.player.center if (result.player.detected and getattr(result.player, 'player_state', '') == 'PLAYER_CONFIRMED') else None
+        result.wall = self.wall_detector.detect(frame, player_center=confirmed_player_center, world_roi=world_roi)
         result.detector_timings['wall'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 4. Yellow Glow Detection (High frequency: every tick)
@@ -128,6 +129,7 @@ class MiningPerceptionEngine:
         result.yellow_glow = self.yellow_detector.detect(
             frame,
             roi_bbox=world_roi,
+            player_center=confirmed_player_center,
             reference_manager=self.reference_manager,
             gray_image=gray_frame,
             match_cache=match_cache,

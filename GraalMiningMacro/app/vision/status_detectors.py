@@ -46,11 +46,11 @@ from app.vision.temporal_filter import TemporalStateFilter
 class StatusDetector:
     """Perception infrastructure for Drill, Battery, and Mine Location states with reference template matching."""
 
-    def __init__(self, drill_margin: float = 0.10, confirm_frames: int = 3):
+    def __init__(self, drill_margin: float = 0.10, confirm_frames: int = 2):
         self.drill_state_margin = drill_margin
-        self.drill_filter = TemporalStateFilter[DrillState](required_frames=confirm_frames, default_state=DrillState.UNKNOWN)
-        self.battery_filter = TemporalStateFilter[BatteryState](required_frames=confirm_frames, default_state=BatteryState.BATTERY_OK)
-        self.mine_filter = TemporalStateFilter[MineLocationState](required_frames=confirm_frames, default_state=MineLocationState.UNKNOWN)
+        self.drill_filter = TemporalStateFilter[DrillState](required_frames=confirm_frames, hysteresis_frames=0, default_state=DrillState.UNKNOWN)
+        self.battery_filter = TemporalStateFilter[BatteryState](required_frames=confirm_frames, hysteresis_frames=1, default_state=BatteryState.BATTERY_OK)
+        self.mine_filter = TemporalStateFilter[MineLocationState](required_frames=confirm_frames, hysteresis_frames=1, default_state=MineLocationState.UNKNOWN)
 
     def detect(
         self,
