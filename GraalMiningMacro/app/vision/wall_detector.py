@@ -13,6 +13,7 @@ class WallDetection:
     direction: str = "UNKNOWN"  # "LEFT", "RIGHT", "TOP", "BOTTOM", "UNKNOWN"
     distance_px: float = 0.0
     confidence: float = 0.0
+    contact_point: Optional[Tuple[int, int]] = None
 
     def summary_text(self) -> str:
         if not self.detected:
@@ -106,10 +107,24 @@ class WallDetector:
         if best_conf < self.confidence_threshold or not best_wall_bbox:
             return WallDetection(detected=False, direction="UNKNOWN", confidence=0.0)
 
+        # Calculate wall contact point
+        c_dist = max(10.0, min_dist)
+        if best_direction == "LEFT":
+            c_point = (max(0, int(px - c_dist)), py)
+        elif best_direction == "RIGHT":
+            c_point = (min(width, int(px + c_dist)), py)
+        elif best_direction in ["TOP", "UP"]:
+            c_point = (px, max(0, int(py - c_dist)))
+        elif best_direction in ["BOTTOM", "DOWN"]:
+            c_point = (px, min(height, int(py + c_dist)))
+        else:
+            c_point = (px, py)
+
         return WallDetection(
             detected=True,
             bbox=best_wall_bbox,
             direction=best_direction,
             distance_px=min_dist,
             confidence=best_conf,
+            contact_point=c_point,
         )

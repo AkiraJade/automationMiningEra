@@ -12,6 +12,8 @@ from app.vision.yellow_detector import YellowGlowDetector, YellowGlowDetectionRe
 from app.vision.spider_detector import SpiderDetector, SpiderDetection
 from app.vision.message_detector import MessageDetector, MessageDetection
 from app.vision.status_detectors import StatusDetector, StatusDetectionResult, DrillState, BatteryState, MineLocationState
+from app.vision.mini_rock_detector import MiniRockDetector
+from app.mining.scene_model import MiningSceneState, MiniRockDetection
 from app.vision.yolo import YoloDetector
 from app.vision.reference import ReferenceManager, ReferenceMatchResult
 from app.mining.mining_target import TargetMemoryBank
@@ -28,9 +30,11 @@ class MiningPerceptionResult:
     wall: WallDetection = field(default_factory=WallDetection)
     target: TargetDetection = field(default_factory=TargetDetection)
     yellow_glow: YellowGlowDetectionResult = field(default_factory=YellowGlowDetectionResult)
+    mini_rock: MiniRockDetection = field(default_factory=MiniRockDetection)
     spider: SpiderDetection = field(default_factory=SpiderDetection)
     message: MessageDetection = field(default_factory=MessageDetection)
     status: StatusDetectionResult = field(default_factory=StatusDetectionResult)
+    scene_state: Optional[MiningSceneState] = None
     reference_matches: List[ReferenceMatchResult] = field(default_factory=list)
 
     overall_confidence: float = 0.0
@@ -39,6 +43,8 @@ class MiningPerceptionResult:
     detector_timings: dict = field(default_factory=dict)  # Per-detector execution times in ms
 
     def summary_text(self) -> str:
+        if self.scene_state:
+            return self.scene_state.summary_text()
         p_str = self.player.summary_text()
         w_str = self.wall.summary_text()
         t_str = self.target.summary_text()
@@ -57,6 +63,7 @@ class MiningPerceptionEngine:
         self.target_memory = TargetMemoryBank()
         self.target_detector = TargetDetector(memory_bank=self.target_memory)
         self.yellow_detector = YellowGlowDetector()
+        self.mini_rock_detector = MiniRockDetector()
         self.spider_detector = SpiderDetector()
         self.message_detector = MessageDetector()
         self.status_detector = StatusDetector()
@@ -80,37 +87,6 @@ class MiningPerceptionEngine:
         self.status_schedule_interval: int = 3   # Every 3 ticks
         self.message_schedule_interval: int = 3  # Every 3 ticks
 
-    def _detect_game_canvas_roi(self, frame: np.ndarray) -> Tuple[int, int, int, int]:
-        """Detects active Graal game canvas bounding box inside captured window, stripping outer black margins."""
-        h, w = frame.shape[:2]
-        if h < 100 or w < 100:
-            return (0, 0, w, h)
-
-        import cv2
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
-
-        # Threshold pixels > 12 to find non-black game canvas
-        _, mask = cv2.threshold(gray, 12, 255, cv2.THRESH_BINARY)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        if not contours:
-            return (0, 0, w, h)
-
-        best_roi = (0, 0, w, h)
-        max_area = 0
-
-        for c in contours:
-            x, y, bw, bh = cv2.boundingRect(c)
-            area = bw * bh
-            # Game canvas is at least 250x200
-            if bw >= 250 and bh >= 200 and area > max_area:
-                # Exclude full outer container window if it has black pillarboxing/letterboxing
-                if area < w * h * 0.98 or (bw < w * 0.95 or bh < h * 0.95):
-                    max_area = area
-                    best_roi = (x, y, bw, bh)
-
-        return best_roi
-
     def process_frame(self, frame: np.ndarray) -> MiningPerceptionResult:
         t_start = time.perf_counter()
         now = time.time()
@@ -121,26 +97,23 @@ class MiningPerceptionEngine:
 
         import cv2
         self._tick_count += 1
-        h, w = frame.shape[:2]
 
-        # Auto-detect game viewport canvas to strip outer black letterboxing/pillarboxing
-        gx, gy, gw, gh = self._detect_game_canvas_roi(frame)
-        top_offset = max(40, gy + int(gh * 0.05)) if gy < 10 else gy
-
-        world_roi = (gx, top_offset, gw, max(100, int(gh * 0.90)))
-        message_roi = (gx + int(gw * 0.10), top_offset, int(gw * 0.80), int(gh * 0.25))
-        status_roi = (gx, top_offset, int(gw * 0.40), int(gh * 0.25))
-
-        # Single-pass grayscale conversion reuse for all template matching in this cycle (cropped to canvas for speed)
+        # Single-pass grayscale conversion reuse for all template matching in this cycle
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
 
         # Per-cycle reference match cache to eliminate duplicate cv2.matchTemplate calls per tick
         match_cache: dict = {}
 
+        # Compute category relative operational ROIs
+        h, w = frame.shape[:2]
+        world_roi = (0, int(h * 0.03), w, int(h * 0.94))
+        message_roi = (int(w * 0.10), int(h * 0.02), int(w * 0.80), int(h * 0.25))
+        status_roi = (int(w * 0.0), int(h * 0.0), int(w * 0.40), int(h * 0.25))
+
         # 1. YOLO Detections (if model loaded)
         yolo_dets = self.yolo_detector.detect(frame) if self.yolo_detector.is_loaded else None
 
-        # 2. Player Detection (High frequency: every tick)
+        # 2. Player Detection & Facing Direction (High frequency: every tick)
         t0 = time.perf_counter()
         result.player = self.player_detector.detect(
             frame,
@@ -152,7 +125,7 @@ class MiningPerceptionEngine:
         )
         result.detector_timings['player'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
-        # 3. Wall Detection (High frequency: every tick)
+        # 3. Wall Detection & Contact Point Calculation (High frequency: every tick)
         t0 = time.perf_counter()
         confirmed_player_center = result.player.center if (result.player.detected and getattr(result.player, 'player_state', '') == 'PLAYER_CONFIRMED') else None
         facing_dir = getattr(result.player, 'facing_direction', 'UNKNOWN')
@@ -164,41 +137,54 @@ class MiningPerceptionEngine:
         )
         result.detector_timings['wall'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
-        # 4. Yellow Glow Detection (High frequency: every tick)
-        t0 = time.perf_counter()
-        yellow_roi = None
-        if confirmed_player_center:
-            px, py = confirmed_player_center
-            rx = max(gx, px - 140)
-            ry = max(top_offset, py - 140)
-            yellow_roi = (rx, ry, min(w - rx, 280), min(h - ry, 280))
-        else:
-            yellow_roi = world_roi
+        # 4. Calculate Wall Contact Point & MINING_TARGET_ROI
+        target_center = None
+        target_bbox = None
+        target_source = "NONE"
 
+        if result.wall.detected and result.wall.contact_point:
+            target_center = result.wall.contact_point
+            target_source = "WALL_CONTACT"
+        elif confirmed_player_center and facing_dir != "UNKNOWN":
+            px, py = confirmed_player_center
+            if facing_dir == "LEFT":
+                target_center = (max(0, px - 28), py)
+            elif facing_dir == "RIGHT":
+                target_center = (min(w, px + 28), py)
+            elif facing_dir in ["UP", "TOP"]:
+                target_center = (px, max(0, py - 28))
+            elif facing_dir in ["DOWN", "BOTTOM"]:
+                target_center = (px, min(h, py + 28))
+
+            if target_center:
+                target_source = "WALL_CONTACT"
+
+        if target_center:
+            target_bbox = (max(0, target_center[0] - 20), max(0, target_center[1] - 20), 40, 40)
+
+        # 5. Yellow Glow Detection (Strictly constrained to MINING_TARGET_ROI)
+        t0 = time.perf_counter()
         result.yellow_glow = self.yellow_detector.detect(
             frame,
-            roi_bbox=yellow_roi,
+            roi_bbox=target_bbox or world_roi,
             player_center=confirmed_player_center,
+            target_center=target_center,
             reference_manager=self.reference_manager,
             gray_image=gray_frame,
             match_cache=match_cache,
         )
         result.detector_timings['yellow_rock'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
-        # 5. Target & Iteration Detection (High frequency: every tick)
+        # 6. Target & Iteration Inspection (Inside MINING_TARGET_ROI)
         t0 = time.perf_counter()
         rock_match = None
         scales = [self.player_detector._locked_scale, 1.0] if self.player_detector._locked_scale else None
-        if confirmed_player_center and self.reference_manager is not None:
-            px, py = confirmed_player_center
-            rx = max(gx, px - 120)
-            ry = max(top_offset, py - 120)
-            target_search_roi = (rx, ry, min(w - rx, 240), min(h - ry, 240))
-            # Find matching rock iteration reference in player vicinity
+        if target_center and self.reference_manager is not None:
+            # Find matching rock iteration reference in player/target vicinity
             rock_matches = self.reference_manager.find_all_matches(
                 frame,
                 category="rock",
-                roi=target_search_roi,
+                roi=target_bbox,
                 gray_image=gray_frame,
                 match_cache=match_cache,
                 candidate_scales=scales,
@@ -207,8 +193,6 @@ class MiningPerceptionEngine:
             if rock_matches:
                 rock_match = rock_matches[0]
 
-        target_center = None
-        target_bbox = None
         target_conf = 0.0
         rock_iter = 0
         is_completed = result.yellow_glow.is_confirmed
@@ -227,45 +211,38 @@ class MiningPerceptionEngine:
             elif "done" in r_name or "yellow" in r_name:
                 rock_iter = 3
                 is_completed = True
+            target_source = "REFERENCE"
         elif result.yellow_glow.is_confirmed:
             target_center = result.yellow_glow.center
             target_bbox = result.yellow_glow.bbox
             target_conf = result.yellow_glow.confidence
             rock_iter = 3
-        elif result.wall.detected and result.wall.bbox:
-            wx, wy, ww, wh = result.wall.bbox
-            target_center = (wx + ww // 2, wy + wh // 2)
-            target_bbox = result.wall.bbox
-            target_conf = result.wall.confidence
+            target_source = "WALL_CONTACT"
+        elif target_center:
+            target_conf = max(0.60, result.player.confidence * 0.8)
             rock_iter = 0
-
-        # Fallback target candidate based on player facing direction prior (positioned in front of character)
-        if target_center is None and confirmed_player_center and facing_dir != "UNKNOWN":
-            px, py = confirmed_player_center
-            if facing_dir == "LEFT":
-                target_center = (px - 32, py)
-            elif facing_dir == "RIGHT":
-                target_center = (px + 32, py)
-            elif facing_dir == "UP":
-                target_center = (px, py - 32)
-            elif facing_dir == "DOWN":
-                target_center = (px, py + 32)
-
-            if target_center:
-                target_bbox = (max(0, target_center[0] - 15), max(0, target_center[1] - 15), 30, 30)
-                target_conf = max(0.60, result.player.confidence * 0.8)
-                rock_iter = 0
 
         result.target = self.target_detector.update_target(
             center=target_center,
             bbox=target_bbox,
             confidence=target_conf,
             is_yellow_completed=is_completed,
-            iteration=rock_iter
+            iteration=rock_iter,
+            target_source=target_source,
         )
         result.detector_timings['target'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
-        # 6. Spider Detection (High frequency: every tick)
+        # 7. Mini-Rock Drop Detection (Behind player)
+        t0 = time.perf_counter()
+        result.mini_rock = self.mini_rock_detector.detect(
+            frame,
+            player_center=confirmed_player_center,
+            facing_direction=facing_dir,
+            world_roi=world_roi,
+        )
+        result.detector_timings['mini_rock'] = round((time.perf_counter() - t0) * 1000.0, 2)
+
+        # 8. Spider Threat Detection (Reference-only, in world_roi)
         t0 = time.perf_counter()
         result.spider = self.spider_detector.detect(
             frame,
@@ -353,6 +330,27 @@ class MiningPerceptionEngine:
 
         # 11. Debounced Logging
         self._log_debounced_events(result)
+
+        # Construct unified MiningSceneState single source of truth
+        result.scene_state = MiningSceneState(
+            timestamp=now,
+            player=result.player,
+            facing_direction=getattr(result.player, 'facing_direction', 'UNKNOWN'),
+            wall=result.wall,
+            target=result.target,
+            target_contact_point=target_center,
+            target_roi=target_bbox,
+            target_source=target_source,
+            yellow_glow=result.yellow_glow,
+            mini_rock=result.mini_rock,
+            spider=result.spider,
+            message=result.message,
+            status=result.status,
+            reference_matches=result.reference_matches,
+            overall_confidence=result.overall_confidence,
+            result_age_sec=result.result_age_sec,
+            detector_timings=result.detector_timings,
+        )
 
         return result
 

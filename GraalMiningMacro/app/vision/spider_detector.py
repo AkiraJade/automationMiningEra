@@ -89,16 +89,12 @@ class SpiderDetector:
                 use_core=True,
             )
             if ref_match and ref_match.found:
-                cx, cy = ref_match.center
-                height, width = frame.shape[:2]
-                is_ui_element = (height >= 400 and width >= 600) and (cy < 45 or (cx < 450 and cy < 250))
-                if not is_ui_element:
-                    raw_match = ref_match
-                    cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
-                    ref_name = ref_match.reference_name
-                    cand_bbox = ref_match.bbox
-                    cand_center = ref_match.center
-                    method = "TEMPLATE"
+                raw_match = ref_match
+                cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
+                ref_name = ref_match.reference_name
+                cand_bbox = ref_match.bbox
+                cand_center = ref_match.center
+                method = "TEMPLATE"
 
         # 2. YOLO Detections Fallback
         if not cand_bbox and yolo_detections:
@@ -109,33 +105,6 @@ class SpiderDetector:
                     cand_center = det.center
                     method = "YOLO"
                     break
-
-        # 3. HSV Color / Feature Fallback (Strict bounds & size check)
-        if not cand_bbox:
-            height, width = frame.shape[:2]
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            lower_red = np.array([0, 120, 60], dtype=np.uint8)
-            upper_red = np.array([10, 255, 200], dtype=np.uint8)
-            mask = cv2.inRange(hsv, lower_red, upper_red)
-
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for cnt in contours:
-                area = cv2.contourArea(cnt)
-                if 20 <= area <= 200:
-                    x, y, w, h = cv2.boundingRect(cnt)
-                    # Ignore red contours in HUD area (y < 20%) or lower message banner (y > 75%)
-                    if y < int(height * 0.20) or y > int(height * 0.75):
-                        continue
-                    # Ignore elongated shapes (warning cones or text elements)
-                    aspect = w / float(h) if h > 0 else 0
-                    if not (0.5 <= aspect <= 1.8):
-                        continue
-                    if self.min_size[0] <= w <= self.max_size[0] and self.min_size[1] <= h <= self.max_size[1]:
-                        cand_bbox = (x, y, w, h)
-                        cand_center = (x + w // 2, y + h // 2)
-                        cand_raw_score = min(0.95, area / 150.0)
-                        method = "COLOR"
-                        break
 
         # Multi-factor validation checks
         if not cand_bbox or cand_raw_score < self.confidence_threshold:

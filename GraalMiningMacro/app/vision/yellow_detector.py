@@ -89,24 +89,11 @@ class YellowGlowDetector:
                 use_core=True,
             )
             if ref_match and ref_match.found and "yellow" in (ref_match.subcategory + ref_match.reference_name).lower():
-                c_x, c_y = ref_match.center
-                # Exclude top window title bar and top-left UI header (chat, phone, map buttons) on full frames
-                is_ui_element = (height >= 400 and width >= 600) and (c_y < 45 or (c_x < 450 and c_y < 250))
-                if not is_ui_element:
-                    if player_center and player_center[0] > 0 and player_center[1] > 0:
-                        dist_p = float(np.hypot(c_x - player_center[0], c_y - player_center[1]))
-                        if dist_p <= 140.0:
-                            raw_match = ref_match
-                            cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
-                            cand_bbox = ref_match.bbox
-                            cand_center = ref_match.center
-                            ref_name = ref_match.reference_name
-                    else:
-                        raw_match = ref_match
-                        cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
-                        cand_bbox = ref_match.bbox
-                        cand_center = ref_match.center
-                        ref_name = ref_match.reference_name
+                raw_match = ref_match
+                cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
+                cand_bbox = ref_match.bbox
+                cand_center = ref_match.center
+                ref_name = ref_match.reference_name
 
         # 2. HSV Color Verification Fallback if no reference match
         if not cand_bbox:
@@ -160,11 +147,15 @@ class YellowGlowDetector:
                     if not (0.4 <= aspect_ratio <= 2.2):
                         continue
 
-                    # Spatial Binding Check: Must be near player/target if player position provided
+                    # Spatial Binding Check: Must be strictly inside/near current target ROI (dist <= 45px)
                     cx, cy = abs_x + w // 2, abs_y + h // 2
-                    if player_center and player_center[0] > 0 and player_center[1] > 0:
-                        dist_p = np.sqrt((cx - player_center[0])**2 + (cy - player_center[1])**2)
-                        if dist_p > 120.0:  # Completed rock must be within immediate mining proximity of player
+                    if target_center and target_center[0] > 0 and target_center[1] > 0:
+                        dist_t = np.hypot(cx - target_center[0], cy - target_center[1])
+                        if dist_t > 45.0:  # Yellow glow must be strictly at the active wall contact target
+                            continue
+                    elif player_center and player_center[0] > 0 and player_center[1] > 0:
+                        dist_p = np.hypot(cx - player_center[0], cy - player_center[1])
+                        if dist_p > 60.0:  # Must be within immediate mining reach of player
                             continue
 
                     conf = min(1.0, area / 180.0)

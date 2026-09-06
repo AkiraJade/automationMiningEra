@@ -20,6 +20,7 @@ class TargetDetection:
     is_completed: bool = False
     age_seconds: float = 0.0
     target_state: str = "NO_TARGET"  # "NO_TARGET", "TARGET_CANDIDATE", "TARGET_CONFIRMED", "YELLOW_COMPLETE"
+    target_source: str = "NONE"      # "WALL_CONTACT", "REFERENCE", "NONE"
 
     def summary_text(self) -> str:
         if not self.detected or self.target_state == "NO_TARGET":
@@ -27,7 +28,8 @@ class TargetDetection:
         if self.is_completed or self.target_state == "YELLOW_COMPLETE":
             return "TARGET: YELLOW COMPLETED"
         iter_str = f"{self.iteration}/3" if self.iteration > 0 else "UNKNOWN"
-        return f"TARGET ({self.confidence * 100:.0f}%) [{self.target_state}] ITER: {iter_str}"
+        src_str = f" [{self.target_source}]" if self.target_source else ""
+        return f"TARGET ({self.confidence * 100:.0f}%){src_str} ITER:{iter_str}"
 
 
 class TargetDetector:
@@ -46,14 +48,15 @@ class TargetDetector:
         bbox: Optional[Tuple[int, int, int, int]],
         confidence: float,
         is_yellow_completed: bool = False,
-        iteration: int = 0
+        iteration: int = 0,
+        target_source: str = "WALL_CONTACT"
     ) -> TargetDetection:
         if not center or not bbox or confidence < 0.40:
-            return TargetDetection(detected=False, target_state="NO_TARGET")
+            return TargetDetection(detected=False, target_state="NO_TARGET", target_source="NONE")
 
         w, h = bbox[2], bbox[3]
         if w < 10 or h < 10 or w > 300 or h > 300:
-            return TargetDetection(detected=False, target_state="NO_TARGET")
+            return TargetDetection(detected=False, target_state="NO_TARGET", target_source="NONE")
 
         target = self.memory_bank.get_or_create(center=center, bbox=bbox, confidence=confidence)
         if iteration > 0:
@@ -80,4 +83,5 @@ class TargetDetector:
             is_completed=target.is_yellow_completed,
             age_seconds=age,
             target_state=t_state,
+            target_source=target_source,
         )
