@@ -99,8 +99,8 @@ class MiningPerceptionEngine:
 
         # Compute category relative operational ROIs
         h, w = frame.shape[:2]
-        world_roi = (int(w * 0.0), int(h * 0.15), int(w * 1.0), int(h * 0.60))
-        message_roi = (int(w * 0.10), int(h * 0.65), int(w * 0.80), int(h * 0.30))
+        world_roi = (0, int(h * 0.03), w, int(h * 0.94))
+        message_roi = (int(w * 0.10), int(h * 0.02), int(w * 0.80), int(h * 0.25))
         status_roi = (int(w * 0.0), int(h * 0.0), int(w * 0.40), int(h * 0.25))
 
         # 1. YOLO Detections (if model loaded)
@@ -136,23 +136,62 @@ class MiningPerceptionEngine:
         )
         result.detector_timings['yellow_rock'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
-        # 5. Target Detection (High frequency: every tick)
+        # 5. Target & Iteration Detection (High frequency: every tick)
         t0 = time.perf_counter()
-        target_center = result.yellow_glow.center
-        target_bbox = result.yellow_glow.bbox
-        target_conf = result.yellow_glow.confidence
+        rock_match = None
+        if confirmed_player_center and self.reference_manager is not None:
+            px, py = confirmed_player_center
+            target_search_roi = (
+                max(0, px - 120),
+                max(0, py - 120),
+                min(w - max(0, px - 120), 240),
+                min(h - max(0, py - 120), 240)
+            )
+            # Find matching rock iteration reference in player vicinity
+            rock_matches = self.reference_manager.find_all_matches(
+                frame, category="rock", roi=target_search_roi, gray_image=gray_frame, match_cache=match_cache
+            )
+            if rock_matches:
+                rock_match = rock_matches[0]
 
-        if not target_center and result.wall.detected and result.wall.bbox:
+        target_center = None
+        target_bbox = None
+        target_conf = 0.0
+        rock_iter = 0
+        is_completed = result.yellow_glow.is_confirmed
+
+        if rock_match and rock_match.found:
+            target_center = rock_match.center
+            target_bbox = rock_match.bbox
+            target_conf = rock_match.confidence
+            r_name = rock_match.reference_name.lower()
+            if "first" in r_name or "1" in r_name:
+                rock_iter = 1
+            elif "second" in r_name or "2" in r_name:
+                rock_iter = 2
+            elif "third" in r_name or "3" in r_name:
+                rock_iter = 3
+            elif "done" in r_name or "yellow" in r_name:
+                rock_iter = 3
+                is_completed = True
+        elif result.yellow_glow.is_confirmed:
+            target_center = result.yellow_glow.center
+            target_bbox = result.yellow_glow.bbox
+            target_conf = result.yellow_glow.confidence
+            rock_iter = 3
+        elif result.wall.detected and result.wall.bbox:
             wx, wy, ww, wh = result.wall.bbox
             target_center = (wx + ww // 2, wy + wh // 2)
             target_bbox = result.wall.bbox
             target_conf = result.wall.confidence
+            rock_iter = 0
 
         result.target = self.target_detector.update_target(
             center=target_center,
             bbox=target_bbox,
             confidence=target_conf,
-            is_yellow_completed=result.yellow_glow.is_confirmed
+            is_yellow_completed=is_completed,
+            iteration=rock_iter
         )
         result.detector_timings['target'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
@@ -200,6 +239,18 @@ class MiningPerceptionEngine:
             self._last_status_timestamp = now
         else:
             result.status = self._last_status_result
+
+        # Direct evidence-based drill state from player reference sprite match
+        if result.player.detected and getattr(result.player, 'drill_equipped', None) is not None:
+            if result.player.drill_equipped:
+                result.status.drill_state = DrillState.EQUIPPED
+                result.status.drill_confidence = result.player.confidence
+                result.status.matched_reference_name = result.player.matched_reference_name
+            else:
+                result.status.drill_state = DrillState.UNEQUIPPED
+                result.status.drill_confidence = result.player.confidence
+                result.status.matched_reference_name = result.player.matched_reference_name
+
         result.detector_timings['status'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 9. Aggregate All Active Reference Matches (Reuses per-cycle match_cache)

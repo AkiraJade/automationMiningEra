@@ -3,8 +3,9 @@
 import time
 import numpy as np
 from dataclasses import dataclass
-from typing import Tuple, Optional
-from app.mining.mining_target import TargetMemoryBank, MiningTarget, TargetState
+from typing import Tuple, Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.mining.mining_target import TargetMemoryBank, MiningTarget, TargetState
 
 
 @dataclass
@@ -32,16 +33,20 @@ class TargetDetection:
 class TargetDetector:
     """Detects mineable rock targets, tracks short-term memory bank, age, and iteration status."""
 
-    def __init__(self, memory_bank: Optional[TargetMemoryBank] = None):
-        self.memory_bank = memory_bank or TargetMemoryBank()
-        self.current_target: Optional[MiningTarget] = None
+    def __init__(self, memory_bank=None):
+        if memory_bank is None:
+            from app.mining.mining_target import TargetMemoryBank
+            memory_bank = TargetMemoryBank()
+        self.memory_bank = memory_bank
+        self.current_target = None
 
     def update_target(
         self,
         center: Optional[Tuple[int, int]],
         bbox: Optional[Tuple[int, int, int, int]],
         confidence: float,
-        is_yellow_completed: bool = False
+        is_yellow_completed: bool = False,
+        iteration: int = 0
     ) -> TargetDetection:
         if not center or not bbox or confidence < 0.40:
             return TargetDetection(detected=False, target_state="NO_TARGET")
@@ -51,7 +56,10 @@ class TargetDetector:
             return TargetDetection(detected=False, target_state="NO_TARGET")
 
         target = self.memory_bank.get_or_create(center=center, bbox=bbox, confidence=confidence)
+        if iteration > 0:
+            target.iterations = iteration
         if is_yellow_completed:
+            from app.mining.mining_target import TargetState
             target.is_yellow_completed = True
             target.iterations = 3
             target.state = TargetState.COMPLETED

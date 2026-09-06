@@ -181,3 +181,82 @@ def test_real_game_screenshot_perception():
 
     # 2. Red cone in lower banner MUST NOT trigger SPIDER DETECTED
     assert res.spider.detected is False
+
+
+def test_message_detector_chat_window_rejected():
+    """Verifies that white text from chat/PM dialogue boxes in lower screen does NOT trigger Nothing to Mine."""
+    from app.vision.message_detector import MessageDetector
+    msg_det = MessageDetector()
+
+    # Frame with large white dialog box at y: 300 to 500
+    frame = np.full((600, 800, 3), 40, dtype=np.uint8)
+    # Chat window background
+    frame[300:500, 200:600] = [80, 80, 80]
+    # White text lines (bright pixels)
+    frame[340:350, 220:450] = [255, 255, 255]
+    frame[380:390, 220:500] = [255, 255, 255]
+    frame[460:480, 250:330] = [255, 255, 255] # Button
+
+    res = msg_det.detect(frame)
+    assert res.nothing_to_mine_detected is False
+
+
+def test_drill_state_evidence_from_player_sprite(tmp_path):
+    """Verifies that matching a mine*DrillEquiped reference sets DrillState.EQUIPPED."""
+    engine = MiningPerceptionEngine(reference_dir=str(tmp_path))
+    # Add drill equipped player reference
+    sample_drill_player = np.full((60, 60, 3), 180, dtype=np.uint8)
+    engine.reference_manager.registry.add_reference(
+        name="mineRightDrillEquiped",
+        category="player",
+        subcategory="mining",
+        source_file_or_image=sample_drill_player,
+        threshold=0.70
+    )
+
+    frame = np.full((600, 800, 3), 40, dtype=np.uint8)
+    # Place player at (300, 400)
+    frame[400:460, 300:360] = sample_drill_player
+
+    res = engine.process_frame(frame)
+    assert res.player.detected is True
+    assert res.status.drill_state == DrillState.EQUIPPED
+    assert "drill" in res.status.matched_reference_name.lower() or "mine" in res.status.matched_reference_name.lower()
+
+
+def test_rock_iteration_reference_matching(tmp_path):
+    """Verifies that rock iteration references (firstRock, secondRock, thirdRock) set target iteration."""
+    engine = MiningPerceptionEngine(reference_dir=str(tmp_path))
+    player_patch = np.full((50, 50, 3), 150, dtype=np.uint8)
+    rock_patch = np.full((40, 40, 3), 200, dtype=np.uint8)
+
+    engine.reference_manager.registry.add_reference(
+        name="RIGHT", category="player", subcategory="right", source_file_or_image=player_patch, threshold=0.70
+    )
+    engine.reference_manager.registry.add_reference(
+        name="secondRock", category="rock", subcategory="normal", source_file_or_image=rock_patch, threshold=0.70
+    )
+
+    frame = np.full((600, 800, 3), 30, dtype=np.uint8)
+    frame[300:350, 200:250] = player_patch
+    frame[300:340, 260:300] = rock_patch  # Adjacent to player
+
+    res = engine.process_frame(frame)
+    assert res.player.detected is True
+    assert res.target.detected is True
+    assert res.target.iteration == 2
+
+
+def test_uploaded_screenshot_no_message_false_positive():
+    """Directly verifies against user uploaded screenshot media_1788690318632.png that chat window is not detected as Nothing to Mine."""
+    import os
+    img_path = r"C:\Users\Jhade\.gemini\antigravity\brain\b6ebf358-ab24-42ed-b3a1-bff6bea61b9c\.user_uploaded\media_1788690318632.png"
+    if not os.path.exists(img_path):
+        pytest.skip("Screenshot not found.")
+
+    raw_frame = cv2.imread(img_path)
+    engine = MiningPerceptionEngine()
+    res = engine.process_frame(raw_frame)
+
+    assert res.message.nothing_to_mine_detected is False
+

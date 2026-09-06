@@ -16,6 +16,7 @@ class PlayerDetection:
     matched_reference_name: str = ""
     matched_subcategory: str = ""
     matched_reference_confidence: float = 0.0
+    drill_equipped: Optional[bool] = None            # True if equipped, False if unequipped, None if unknown
     detection_method: str = "TEMPLATE"               # "TEMPLATE", "YOLO", "HEURISTIC"
     player_source: str = "NONE"                      # "REFERENCE", "YOLO", "HEURISTIC", "NONE"
     player_state: str = "PLAYER_NOT_FOUND"           # "PLAYER_CONFIRMED", "PLAYER_UNCERTAIN", "PLAYER_NOT_FOUND"
@@ -61,15 +62,41 @@ class PlayerDetector:
 
         # 1. REFERENCE TEMPLATE MATCHING (PRIMARY DETECTOR)
         if reference_manager is not None:
-            ref_match = reference_manager.find_best_match(
-                frame, category="player", roi=world_roi, gray_image=gray_image, match_cache=match_cache
-            )
+            ref_match = None
+            # Fast local tracking window if player was previously detected
+            if self._last_center is not None:
+                lcx, lcy = self._last_center
+                track_w, track_h = 300, 300
+                track_x = max(0, min(lcx - track_w // 2, width - track_w))
+                track_y = max(0, min(lcy - track_h // 2, height - track_h))
+                track_roi = (track_x, track_y, min(width - track_x, track_w), min(height - track_y, track_h))
+                cand_match = reference_manager.find_best_match(
+                    frame, category="player", roi=track_roi, gray_image=gray_image, match_cache=match_cache
+                )
+                if cand_match and cand_match.found and cand_match.confidence >= self.confidence_threshold:
+                    ref_match = cand_match
+
+            # Fall back to full world_roi search if tracking missed or lost
+            if ref_match is None:
+                ref_match = reference_manager.find_best_match(
+                    frame, category="player", roi=world_roi, gray_image=gray_image, match_cache=match_cache
+                )
+
             if ref_match and ref_match.found and ref_match.confidence >= self.confidence_threshold:
                 bw, bh = ref_match.bbox[2], ref_match.bbox[3] if ref_match.bbox else (0, 0)
                 if self.PLAYER_MIN_MATCH_SIZE <= bw <= self.PLAYER_MAX_MATCH_SIZE and self.PLAYER_MIN_MATCH_SIZE <= bh <= self.PLAYER_MAX_MATCH_SIZE:
                     center = ref_match.center
                     delta = self._calc_delta(center)
                     self._last_center = center
+
+                    # Determine drill equipment evidence directly from player reference template
+                    ref_name_lower = ref_match.reference_name.lower()
+                    drill_equipped = None
+                    if "drillequiped" in ref_name_lower or ref_match.subcategory == "mining":
+                        drill_equipped = True
+                    elif ref_match.reference_name in ["LEFT", "DOWN", "RIGHT", "UP"] or ref_match.subcategory in ["left", "down", "right", "up"]:
+                        drill_equipped = False
+
                     return PlayerDetection(
                         detected=True,
                         bbox=ref_match.bbox,
@@ -80,6 +107,7 @@ class PlayerDetector:
                         matched_reference_name=ref_match.reference_name,
                         matched_subcategory=ref_match.subcategory,
                         matched_reference_confidence=ref_match.confidence,
+                        drill_equipped=drill_equipped,
                         detection_method="TEMPLATE",
                         player_source="REFERENCE",
                         player_state="PLAYER_CONFIRMED",
