@@ -18,11 +18,12 @@ class PlayerDetection:
     matched_reference_confidence: float = 0.0
     detection_method: str = "TEMPLATE"               # "TEMPLATE", "YOLO", "HEURISTIC"
     player_source: str = "NONE"                      # "REFERENCE", "YOLO", "HEURISTIC", "NONE"
+    player_state: str = "PLAYER_NOT_FOUND"           # "PLAYER_CONFIRMED", "PLAYER_UNCERTAIN", "PLAYER_NOT_FOUND"
     is_heuristic: bool = False
     rejection_reason: str = ""
 
     def summary_text(self) -> str:
-        if not self.detected or not self.center:
+        if not self.detected or not self.center or self.player_state == "PLAYER_NOT_FOUND":
             return "PLAYER: UNKNOWN"
         if self.is_heuristic or self.player_source == "HEURISTIC":
             return f"PLAYER (HEURISTIC) X:{self.center[0]} Y:{self.center[1]}"
@@ -34,6 +35,9 @@ class PlayerDetection:
 
 class PlayerDetector:
     """Detects player character using reference library template matching with fallback to YOLO/Center heuristics."""
+
+    PLAYER_MIN_MATCH_SIZE: int = 12
+    PLAYER_MAX_MATCH_SIZE: int = 120
 
     def __init__(self, confidence_threshold: float = 0.65, allow_heuristic_fallback: bool = True):
         self.confidence_threshold = confidence_threshold
@@ -51,7 +55,7 @@ class PlayerDetector:
     ) -> PlayerDetection:
         if frame is None or frame.size == 0:
             self._last_center = None
-            return PlayerDetection(detected=False, confidence=0.0)
+            return PlayerDetection(detected=False, confidence=0.0, player_state="PLAYER_NOT_FOUND")
 
         height, width = frame.shape[:2]
 
@@ -61,23 +65,26 @@ class PlayerDetector:
                 frame, category="player", roi=world_roi, gray_image=gray_image, match_cache=match_cache
             )
             if ref_match and ref_match.found and ref_match.confidence >= self.confidence_threshold:
-                center = ref_match.center
-                delta = self._calc_delta(center)
-                self._last_center = center
-                return PlayerDetection(
-                    detected=True,
-                    bbox=ref_match.bbox,
-                    center=center,
-                    raw_score=getattr(ref_match, "raw_score", ref_match.confidence),
-                    confidence=ref_match.confidence,
-                    movement_delta=delta,
-                    matched_reference_name=ref_match.reference_name,
-                    matched_subcategory=ref_match.subcategory,
-                    matched_reference_confidence=ref_match.confidence,
-                    detection_method="TEMPLATE",
-                    player_source="REFERENCE",
-                    is_heuristic=False,
-                )
+                bw, bh = ref_match.bbox[2], ref_match.bbox[3] if ref_match.bbox else (0, 0)
+                if self.PLAYER_MIN_MATCH_SIZE <= bw <= self.PLAYER_MAX_MATCH_SIZE and self.PLAYER_MIN_MATCH_SIZE <= bh <= self.PLAYER_MAX_MATCH_SIZE:
+                    center = ref_match.center
+                    delta = self._calc_delta(center)
+                    self._last_center = center
+                    return PlayerDetection(
+                        detected=True,
+                        bbox=ref_match.bbox,
+                        center=center,
+                        raw_score=getattr(ref_match, "raw_score", ref_match.confidence),
+                        confidence=ref_match.confidence,
+                        movement_delta=delta,
+                        matched_reference_name=ref_match.reference_name,
+                        matched_subcategory=ref_match.subcategory,
+                        matched_reference_confidence=ref_match.confidence,
+                        detection_method="TEMPLATE",
+                        player_source="REFERENCE",
+                        player_state="PLAYER_CONFIRMED",
+                        is_heuristic=False,
+                    )
 
         # 2. YOLO DETECTOR FALLBACK
         if yolo_detections:
@@ -95,6 +102,7 @@ class PlayerDetector:
                         movement_delta=delta,
                         detection_method="YOLO",
                         player_source="YOLO",
+                        player_state="PLAYER_CONFIRMED",
                         is_heuristic=False,
                     )
 
@@ -118,11 +126,12 @@ class PlayerDetector:
                 movement_delta=delta,
                 detection_method="HEURISTIC",
                 player_source="HEURISTIC",
+                player_state="PLAYER_UNCERTAIN",
                 is_heuristic=True,
             )
 
         self._last_center = None
-        return PlayerDetection(detected=False, confidence=0.0, player_source="NONE")
+        return PlayerDetection(detected=False, confidence=0.0, player_source="NONE", player_state="PLAYER_NOT_FOUND")
 
     def _calc_delta(self, current_center: Tuple[int, int]) -> float:
         if not self._last_center:

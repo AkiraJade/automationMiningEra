@@ -120,7 +120,7 @@ class MiningPerceptionEngine:
 
         # 3. Wall Detection (High frequency: every tick)
         t0 = time.perf_counter()
-        result.wall = self.wall_detector.detect(frame, player_center=result.player.center)
+        result.wall = self.wall_detector.detect(frame, player_center=result.player.center, world_roi=world_roi)
         result.detector_timings['wall'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 4. Yellow Glow Detection (High frequency: every tick)
@@ -202,9 +202,8 @@ class MiningPerceptionEngine:
 
         # 9. Aggregate All Active Reference Matches (Reuses per-cycle match_cache)
         t0 = time.perf_counter()
-        result.reference_matches = self.reference_manager.find_all_matches(
-            frame, gray_image=gray_frame, match_cache=match_cache
-        )
+        cached_matches = [m for m in match_cache.values() if m and getattr(m, 'found', False)]
+        result.reference_matches = sorted(cached_matches, key=lambda m: getattr(m, 'raw_score', 0.0), reverse=True)
         result.detector_timings['reference_matcher_total'] = round((time.perf_counter() - t0) * 1000.0, 2)
         result.detector_timings['total_perception'] = round((time.perf_counter() - t_start) * 1000.0, 2)
 

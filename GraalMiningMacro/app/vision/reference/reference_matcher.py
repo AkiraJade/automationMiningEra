@@ -171,8 +171,8 @@ class ReferenceMatcher:
                     best_scale = float(s)
                     best_tpl_w, best_tpl_h = tw, th
 
-                # Short-circuit if scale=1.0 has excellent match
-                if abs(s - 1.0) < 1e-3 and best_max_val >= 0.85:
+                # Short-circuit if scale=1.0 has excellent match (>= 0.80) or extremely poor match (< 0.15)
+                if abs(s - 1.0) < 1e-3 and (best_max_val >= 0.80 or best_max_val < 0.15):
                     break
 
             if best_max_val < 0.0:

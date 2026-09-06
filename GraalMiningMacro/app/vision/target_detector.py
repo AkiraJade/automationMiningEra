@@ -18,13 +18,14 @@ class TargetDetection:
     max_iterations: int = 3
     is_completed: bool = False
     age_seconds: float = 0.0
+    target_state: str = "NO_TARGET"  # "NO_TARGET", "TARGET_CANDIDATE", "TARGET_CONFIRMED", "YELLOW_COMPLETE"
 
     def summary_text(self) -> str:
-        if not self.detected:
+        if not self.detected or self.target_state == "NO_TARGET":
             return "TARGET: UNKNOWN"
-        if self.is_completed:
+        if self.is_completed or self.target_state == "YELLOW_COMPLETE":
             return "TARGET: YELLOW COMPLETED"
-        return f"TARGET ({self.confidence * 100:.0f}%) ITER: {self.iteration}/3"
+        return f"TARGET ({self.confidence * 100:.0f}%) [{self.target_state}] ITER: {self.iteration}/3"
 
 
 class TargetDetector:
@@ -41,8 +42,12 @@ class TargetDetector:
         confidence: float,
         is_yellow_completed: bool = False
     ) -> TargetDetection:
-        if not center or not bbox or confidence <= 0.0:
-            return TargetDetection(detected=False)
+        if not center or not bbox or confidence < 0.40:
+            return TargetDetection(detected=False, target_state="NO_TARGET")
+
+        w, h = bbox[2], bbox[3]
+        if w < 10 or h < 10 or w > 300 or h > 300:
+            return TargetDetection(detected=False, target_state="NO_TARGET")
 
         target = self.memory_bank.get_or_create(center=center, bbox=bbox, confidence=confidence)
         if is_yellow_completed:
@@ -52,6 +57,8 @@ class TargetDetector:
 
         self.current_target = target
         age = time.time() - target.last_seen
+
+        t_state = "YELLOW_COMPLETE" if target.is_yellow_completed else ("TARGET_CONFIRMED" if confidence >= 0.65 else "TARGET_CANDIDATE")
 
         return TargetDetection(
             detected=True,
@@ -63,4 +70,5 @@ class TargetDetector:
             max_iterations=target.max_iterations,
             is_completed=target.is_yellow_completed,
             age_seconds=age,
+            target_state=t_state,
         )
