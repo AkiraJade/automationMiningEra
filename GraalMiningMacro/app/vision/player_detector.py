@@ -36,16 +36,24 @@ class PlayerDetection:
 
 
 class PlayerDetector:
-    """Detects player character using reference library template matching with fallback to YOLO/Center heuristics."""
+    """Detects player character using reference library template matching, YOLO, dynamic contour scanning, and auto-learning center cropping."""
 
     PLAYER_MIN_MATCH_SIZE: int = 12
     PLAYER_MAX_MATCH_SIZE: int = 120
 
-    def __init__(self, confidence_threshold: float = 0.58, allow_heuristic_fallback: bool = True):
+    def __init__(
+        self,
+        confidence_threshold: float = 0.58,
+        allow_heuristic_fallback: bool = True,
+        enable_auto_learning: bool = True,
+    ):
         self.confidence_threshold = confidence_threshold
         self.allow_heuristic_fallback = allow_heuristic_fallback
+        self.enable_auto_learning = enable_auto_learning
         self._last_center: Optional[Tuple[int, int]] = None
         self._locked_scale: float = 1.0
+        self._dynamic_ref_registered: bool = False
+        self._dynamic_ref_name: str = "dynamic_live_player"
 
     def detect(
         self,
@@ -62,7 +70,7 @@ class PlayerDetector:
 
         height, width = frame.shape[:2]
 
-        # 1. REFERENCE TEMPLATE MATCHING (PRIMARY DETECTOR)
+        # 1. REFERENCE TEMPLATE MATCHING (PRIMARY DETECTOR - INCLUDES DYNAMICALLY LEARNED SPRITES)
         if reference_manager is not None:
             ref_match = None
 
@@ -150,7 +158,7 @@ class PlayerDetector:
                     drill_equipped = None
                     if "drillequiped" in ref_name_lower or ref_match.subcategory == "mining":
                         drill_equipped = True
-                    elif ref_match.reference_name in ["LEFT", "DOWN", "RIGHT", "UP"] or ref_match.subcategory in ["left", "down", "right", "up"]:
+                    elif ref_name_lower in ["left", "down", "right", "up"] or ref_match.subcategory in ["left", "down", "right", "up"]:
                         drill_equipped = False
 
                     facing = "UNKNOWN"
@@ -176,7 +184,7 @@ class PlayerDetector:
                         drill_equipped=drill_equipped,
                         facing_direction=facing,
                         detection_method="TEMPLATE",
-                        player_source="REFERENCE",
+                        player_source="REFERENCE" if "dynamic" not in ref_name_lower else "DYNAMIC_SCAN",
                         player_state="PLAYER_CONFIRMED",
                         is_heuristic=False,
                     )
@@ -201,7 +209,36 @@ class PlayerDetector:
                         is_heuristic=False,
                     )
 
-        # 3. EXPLICIT CENTER HEURISTIC FALLBACK (Labeled clearly as HEURISTIC with low confidence 0.30, NOT detected)
+        # 3. DYNAMIC CONTOUR & SHADOW BLOB SCANNER (Scans camera center for player sprite)
+        dyn_center, dyn_bbox = self._detect_dynamic_contour(frame, gray_image)
+        if dyn_center and dyn_bbox:
+            cx, cy = dyn_center
+            delta = self._calc_delta(dyn_center)
+            self._last_center = dyn_center
+
+            # AUTO-LEARNING: Register cropped sprite dynamically into reference manager if enabled
+            if self.enable_auto_learning and reference_manager is not None and getattr(reference_manager, 'registry', None) is not None:
+                has_player_refs = len(reference_manager.registry.get_enabled_by_category("player")) > 0
+                if not has_player_refs:
+                    self._auto_learn_player_sprite(frame, dyn_center, dyn_bbox, reference_manager)
+
+            return PlayerDetection(
+                detected=True,
+                bbox=dyn_bbox,
+                center=dyn_center,
+                raw_score=0.78,
+                confidence=0.78,
+                movement_delta=delta,
+                matched_reference_name="",
+                matched_subcategory="dynamic" if self._dynamic_ref_registered else "",
+                matched_reference_confidence=0.0,
+                detection_method="DYNAMIC_SCAN",
+                player_source="DYNAMIC_SCAN",
+                player_state="PLAYER_CONFIRMED",
+                is_heuristic=False,
+            )
+
+        # 4. EXPLICIT CENTER HEURISTIC FALLBACK (Labeled clearly as HEURISTIC with low confidence 0.30)
         if self.allow_heuristic_fallback:
             cx, cy = width // 2, height // 2
             pw, ph = 36, 48
@@ -227,6 +264,94 @@ class PlayerDetector:
 
         self._last_center = None
         return PlayerDetection(detected=False, confidence=0.0, player_source="NONE", player_state="PLAYER_NOT_FOUND")
+
+    def _detect_dynamic_contour(
+        self, frame: np.ndarray, gray_image: Optional[np.ndarray] = None
+    ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[int, int, int, int]]]:
+        """Scans the central camera region for character sprite contours and ground shadows."""
+        import cv2
+        h, w = frame.shape[:2]
+        cam_cx, cam_cy = w // 2, h // 2
+
+        # Define search ROI centered around camera (width 40%, height 45%)
+        roi_w, roi_h = int(w * 0.40), int(h * 0.45)
+        rx = max(0, cam_cx - roi_w // 2)
+        ry = max(0, cam_cy - roi_h // 2)
+
+        if gray_image is not None:
+            roi_gray = gray_image[ry:ry+roi_h, rx:rx+roi_w]
+        elif len(frame.shape) == 3:
+            roi_gray = cv2.cvtColor(frame[ry:ry+roi_h, rx:rx+roi_w], cv2.COLOR_BGR2GRAY)
+        else:
+            roi_gray = frame[ry:ry+roi_h, rx:rx+roi_w]
+
+        if roi_gray.size == 0 or roi_gray.shape[0] < 20 or roi_gray.shape[1] < 20:
+            return None, None
+
+        # Edge & Intensity contrast thresholding for sprite isolation
+        blurred = cv2.GaussianBlur(roi_gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 30, 100)
+
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        best_center = None
+        best_bbox = None
+        min_dist_to_center = float('inf')
+
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area < 80 or area > 6000:
+                continue
+
+            bx, by, bw, bh = cv2.boundingRect(c)
+            # Character sprite bounding dimensions filter
+            if 18 <= bw <= 80 and 22 <= bh <= 90:
+                aspect = bw / float(bh)
+                if 0.35 <= aspect <= 1.4:
+                    abs_x = rx + bx + bw // 2
+                    abs_y = ry + by + bh // 2
+                    dist = np.hypot(abs_x - cam_cx, abs_y - cam_cy)
+
+                    if dist < min_dist_to_center:
+                        min_dist_to_center = dist
+                        best_center = (abs_x, abs_y)
+                        best_bbox = (rx + bx, ry + by, bw, bh)
+
+        # Accept contour if it lies within 100px of camera center
+        if best_center and min_dist_to_center <= 100.0:
+            return best_center, best_bbox
+
+        return None, None
+
+    def _auto_learn_player_sprite(
+        self, frame: np.ndarray, center: Tuple[int, int], bbox: Tuple[int, int, int, int], reference_manager: object
+    ) -> None:
+        """Crops current character sprite from frame and registers it dynamically into reference library if texture is real."""
+        if self._dynamic_ref_registered:
+            return
+
+        try:
+            h, w = frame.shape[:2]
+            cx, cy = center
+            sw, sh = 48, 56
+            x1 = max(0, cx - sw // 2)
+            y1 = max(0, cy - sh // 2)
+            x2 = min(w, x1 + sw)
+            y2 = min(h, y1 + sh)
+
+            crop = frame[y1:y2, x1:x2]
+            if crop.size > 0 and crop.shape[0] >= 24 and crop.shape[1] >= 24:
+                std_dev = float(np.std(crop))
+                if std_dev > 8.0:
+                    reference_manager.registry.add_reference(
+                        name=self._dynamic_ref_name,
+                        category="player",
+                        subcategory="dynamic",
+                        source_file_or_image=crop,
+                        threshold=0.62
+                    )
+                    self._dynamic_ref_registered = True
+        except Exception:
+            pass
 
     def _calc_delta(self, current_center: Tuple[int, int]) -> float:
         if not self._last_center:
