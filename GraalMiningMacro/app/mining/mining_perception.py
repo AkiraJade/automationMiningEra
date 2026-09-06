@@ -97,11 +97,11 @@ class MiningPerceptionEngine:
         # Per-cycle reference match cache to eliminate duplicate cv2.matchTemplate calls per tick
         match_cache: dict = {}
 
-        # Compute category relative operational ROIs
+        # Compute category relative operational ROIs (strictly Y >= 45px to exclude window title-bar header)
         h, w = frame.shape[:2]
-        world_roi = (0, int(h * 0.03), w, int(h * 0.94))
-        message_roi = (int(w * 0.10), int(h * 0.02), int(w * 0.80), int(h * 0.25))
-        status_roi = (int(w * 0.0), int(h * 0.0), int(w * 0.40), int(h * 0.25))
+        world_roi = (0, max(45, int(h * 0.08)), w, int(h * 0.88))
+        message_roi = (int(w * 0.10), max(45, int(h * 0.08)), int(w * 0.80), int(h * 0.22))
+        status_roi = (int(w * 0.0), max(45, int(h * 0.08)), int(w * 0.40), int(h * 0.22))
 
         # 1. YOLO Detections (if model loaded)
         yolo_dets = self.yolo_detector.detect(frame) if self.yolo_detector.is_loaded else None

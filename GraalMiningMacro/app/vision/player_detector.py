@@ -36,7 +36,7 @@ class PlayerDetection:
 
 
 class PlayerDetector:
-    """Detects player character using reference library template matching, YOLO, dynamic contour scanning, and auto-learning center cropping."""
+    """Detects player character using reference library template matching, YOLO, dynamic contour scanning, and center heuristics with window title-bar boundary isolation."""
 
     PLAYER_MIN_MATCH_SIZE: int = 12
     PLAYER_MAX_MATCH_SIZE: int = 120
@@ -45,15 +45,11 @@ class PlayerDetector:
         self,
         confidence_threshold: float = 0.58,
         allow_heuristic_fallback: bool = True,
-        enable_auto_learning: bool = True,
     ):
         self.confidence_threshold = confidence_threshold
         self.allow_heuristic_fallback = allow_heuristic_fallback
-        self.enable_auto_learning = enable_auto_learning
         self._last_center: Optional[Tuple[int, int]] = None
         self._locked_scale: float = 1.0
-        self._dynamic_ref_registered: bool = False
-        self._dynamic_ref_name: str = "dynamic_live_player"
 
     def detect(
         self,
@@ -70,7 +66,9 @@ class PlayerDetector:
 
         height, width = frame.shape[:2]
 
-        # 1. REFERENCE TEMPLATE MATCHING (PRIMARY DETECTOR - INCLUDES DYNAMICALLY LEARNED SPRITES)
+        min_y = 40 if height > 300 else 0
+
+        # 1. REFERENCE TEMPLATE MATCHING (PRIMARY DETECTOR)
         if reference_manager is not None:
             ref_match = None
 
@@ -79,7 +77,7 @@ class PlayerDetector:
                 lcx, lcy = self._last_center
                 track_w, track_h = 320, 320
                 track_x = max(0, min(lcx - track_w // 2, width - track_w))
-                track_y = max(0, min(lcy - track_h // 2, height - track_h))
+                track_y = max(min_y, min(lcy - track_h // 2, height - track_h - min_y))
                 track_roi = (track_x, track_y, min(width - track_x, track_w), min(height - track_y, track_h))
                 cand_match = reference_manager.find_best_match(
                     frame,
@@ -95,9 +93,9 @@ class PlayerDetector:
 
             # Central viewport search prior (Graal camera keeps player centered in cave)
             if ref_match is None:
-                cx, cy = width // 2, height // 2
+                cx, cy = width // 2, max(height // 2, min_y + 15)
                 cw, ch = int(width * 0.50), int(height * 0.55)
-                central_roi = (max(0, cx - cw // 2), max(0, cy - ch // 2), min(width, cw), min(height, ch))
+                central_roi = (max(0, cx - cw // 2), max(min_y, cy - ch // 2), min(width, cw), min(height, ch))
 
                 # Primary scales: locked scale and native 1.0
                 primary_scales = [self._locked_scale] if abs(self._locked_scale - 1.0) < 1e-3 else [self._locked_scale, 1.0]
@@ -145,92 +143,89 @@ class PlayerDetector:
                 )
 
             if ref_match and ref_match.found and ref_match.confidence >= self.confidence_threshold:
-                bw, bh = ref_match.bbox[2], ref_match.bbox[3] if ref_match.bbox else (0, 0)
-                if self.PLAYER_MIN_MATCH_SIZE <= bw <= self.PLAYER_MAX_MATCH_SIZE and self.PLAYER_MIN_MATCH_SIZE <= bh <= self.PLAYER_MAX_MATCH_SIZE:
-                    center = ref_match.center
-                    delta = self._calc_delta(center)
-                    self._last_center = center
+                center = ref_match.center
+                # STRICT TITLE BAR GUARD: Exclude top window header (Y < min_y) and outer borders
+                if center[1] >= min_y and 10 <= center[0] <= width - 10 and center[1] <= height - 10:
+                    bw, bh = ref_match.bbox[2], ref_match.bbox[3] if ref_match.bbox else (0, 0)
+                    if self.PLAYER_MIN_MATCH_SIZE <= bw <= self.PLAYER_MAX_MATCH_SIZE and self.PLAYER_MIN_MATCH_SIZE <= bh <= self.PLAYER_MAX_MATCH_SIZE:
+                        delta = self._calc_delta(center)
+                        self._last_center = center
 
-                    # Determine drill equipment evidence & facing direction directly from player reference template
-                    ref_name_lower = ref_match.reference_name.lower()
-                    sub_lower = ref_match.subcategory.lower()
+                        # Determine drill equipment evidence & facing direction directly from player reference template
+                        ref_name_lower = ref_match.reference_name.lower()
+                        sub_lower = ref_match.subcategory.lower()
 
-                    drill_equipped = None
-                    if "drillequiped" in ref_name_lower or ref_match.subcategory == "mining":
-                        drill_equipped = True
-                    elif ref_name_lower in ["left", "down", "right", "up"] or ref_match.subcategory in ["left", "down", "right", "up"]:
-                        drill_equipped = False
+                        drill_equipped = None
+                        if "drillequiped" in ref_name_lower or ref_match.subcategory == "mining":
+                            drill_equipped = True
+                        elif ref_name_lower in ["left", "down", "right", "up"] or ref_match.subcategory in ["left", "down", "right", "up"]:
+                            drill_equipped = False
 
-                    facing = "UNKNOWN"
-                    if "left" in ref_name_lower or "left" in sub_lower:
-                        facing = "LEFT"
-                    elif "right" in ref_name_lower or "right" in sub_lower:
-                        facing = "RIGHT"
-                    elif "up" in ref_name_lower or "up" in sub_lower:
-                        facing = "UP"
-                    elif "down" in ref_name_lower or "down" in sub_lower:
-                        facing = "DOWN"
+                        facing = "UNKNOWN"
+                        if "left" in ref_name_lower or "left" in sub_lower:
+                            facing = "LEFT"
+                        elif "right" in ref_name_lower or "right" in sub_lower:
+                            facing = "RIGHT"
+                        elif "up" in ref_name_lower or "up" in sub_lower:
+                            facing = "UP"
+                        elif "down" in ref_name_lower or "down" in sub_lower:
+                            facing = "DOWN"
 
-                    return PlayerDetection(
-                        detected=True,
-                        bbox=ref_match.bbox,
-                        center=center,
-                        raw_score=getattr(ref_match, "raw_score", ref_match.confidence),
-                        confidence=ref_match.confidence,
-                        movement_delta=delta,
-                        matched_reference_name=ref_match.reference_name,
-                        matched_subcategory=ref_match.subcategory,
-                        matched_reference_confidence=ref_match.confidence,
-                        drill_equipped=drill_equipped,
-                        facing_direction=facing,
-                        detection_method="TEMPLATE",
-                        player_source="REFERENCE" if "dynamic" not in ref_name_lower else "DYNAMIC_SCAN",
-                        player_state="PLAYER_CONFIRMED",
-                        is_heuristic=False,
-                    )
+                        return PlayerDetection(
+                            detected=True,
+                            bbox=ref_match.bbox,
+                            center=center,
+                            raw_score=getattr(ref_match, "raw_score", ref_match.confidence),
+                            confidence=ref_match.confidence,
+                            movement_delta=delta,
+                            matched_reference_name=ref_match.reference_name,
+                            matched_subcategory=ref_match.subcategory,
+                            matched_reference_confidence=ref_match.confidence,
+                            drill_equipped=drill_equipped,
+                            facing_direction=facing,
+                            detection_method="TEMPLATE",
+                            player_source="REFERENCE",
+                            player_state="PLAYER_CONFIRMED",
+                            is_heuristic=False,
+                        )
 
         # 2. YOLO DETECTOR FALLBACK
         if yolo_detections:
             for det in yolo_detections:
                 if getattr(det, "class_name", "") == "player" and det.confidence >= self.confidence_threshold:
                     center = det.center
-                    delta = self._calc_delta(center)
-                    self._last_center = center
-                    return PlayerDetection(
-                        detected=True,
-                        bbox=det.bbox,
-                        center=center,
-                        raw_score=det.confidence,
-                        confidence=det.confidence,
-                        movement_delta=delta,
-                        detection_method="YOLO",
-                        player_source="YOLO",
-                        player_state="PLAYER_CONFIRMED",
-                        is_heuristic=False,
-                    )
+                    if center[1] >= 45:
+                        delta = self._calc_delta(center)
+                        self._last_center = center
+                        return PlayerDetection(
+                            detected=True,
+                            bbox=det.bbox,
+                            center=center,
+                            raw_score=det.confidence,
+                            confidence=det.confidence,
+                            movement_delta=delta,
+                            detection_method="YOLO",
+                            player_source="YOLO",
+                            player_state="PLAYER_CONFIRMED",
+                            is_heuristic=False,
+                        )
 
-        # 3. DYNAMIC CONTOUR & SHADOW BLOB SCANNER (Scans camera center for player sprite)
+        # 3. DYNAMIC CONTOUR & SHADOW BLOB SCANNER (Scans camera center for player sprite, excluding title bar)
         dyn_center, dyn_bbox = self._detect_dynamic_contour(frame, gray_image)
-        if dyn_center and dyn_bbox:
+        if dyn_center and dyn_bbox and dyn_center[1] >= 45:
             cx, cy = dyn_center
             delta = self._calc_delta(dyn_center)
             self._last_center = dyn_center
-
-            # AUTO-LEARNING: Register cropped sprite dynamically into reference manager if enabled
-            if self.enable_auto_learning and reference_manager is not None and getattr(reference_manager, 'registry', None) is not None:
-                has_player_refs = len(reference_manager.registry.get_enabled_by_category("player")) > 0
-                if not has_player_refs:
-                    self._auto_learn_player_sprite(frame, dyn_center, dyn_bbox, reference_manager)
 
             return PlayerDetection(
                 detected=True,
                 bbox=dyn_bbox,
                 center=dyn_center,
-                raw_score=0.78,
-                confidence=0.78,
+                raw_score=0.75,
+                confidence=0.75,
                 movement_delta=delta,
                 matched_reference_name="",
-                matched_subcategory="dynamic" if self._dynamic_ref_registered else "",
+                matched_subcategory="dynamic",
                 matched_reference_confidence=0.0,
                 detection_method="DYNAMIC_SCAN",
                 player_source="DYNAMIC_SCAN",
@@ -240,7 +235,7 @@ class PlayerDetector:
 
         # 4. EXPLICIT CENTER HEURISTIC FALLBACK (Labeled clearly as HEURISTIC with low confidence 0.30)
         if self.allow_heuristic_fallback:
-            cx, cy = width // 2, height // 2
+            cx, cy = width // 2, max(height // 2, 60)
             pw, ph = 36, 48
             bbox = (cx - pw // 2, cy - ph // 2, pw, ph)
             center = (cx, cy)
@@ -271,12 +266,12 @@ class PlayerDetector:
         """Scans the central camera region for character sprite contours and ground shadows."""
         import cv2
         h, w = frame.shape[:2]
-        cam_cx, cam_cy = w // 2, h // 2
+        cam_cx, cam_cy = w // 2, max(h // 2, 60)
 
-        # Define search ROI centered around camera (width 40%, height 45%)
-        roi_w, roi_h = int(w * 0.40), int(h * 0.45)
-        rx = max(0, cam_cx - roi_w // 2)
-        ry = max(0, cam_cy - roi_h // 2)
+        # Define search ROI centered around camera (width 35%, height 40%), strictly Y >= 45px
+        roi_w, roi_h = int(w * 0.35), int(h * 0.40)
+        rx = max(30, cam_cx - roi_w // 2)
+        ry = max(45, cam_cy - roi_h // 2)
 
         if gray_image is not None:
             roi_gray = gray_image[ry:ry+roi_h, rx:rx+roi_w]
@@ -309,49 +304,19 @@ class PlayerDetector:
                 if 0.35 <= aspect <= 1.4:
                     abs_x = rx + bx + bw // 2
                     abs_y = ry + by + bh // 2
-                    dist = np.hypot(abs_x - cam_cx, abs_y - cam_cy)
 
-                    if dist < min_dist_to_center:
-                        min_dist_to_center = dist
-                        best_center = (abs_x, abs_y)
-                        best_bbox = (rx + bx, ry + by, bw, bh)
+                    if abs_y >= 45:
+                        dist = np.hypot(abs_x - cam_cx, abs_y - cam_cy)
+                        if dist < min_dist_to_center:
+                            min_dist_to_center = dist
+                            best_center = (abs_x, abs_y)
+                            best_bbox = (rx + bx, ry + by, bw, bh)
 
         # Accept contour if it lies within 100px of camera center
         if best_center and min_dist_to_center <= 100.0:
             return best_center, best_bbox
 
         return None, None
-
-    def _auto_learn_player_sprite(
-        self, frame: np.ndarray, center: Tuple[int, int], bbox: Tuple[int, int, int, int], reference_manager: object
-    ) -> None:
-        """Crops current character sprite from frame and registers it dynamically into reference library if texture is real."""
-        if self._dynamic_ref_registered:
-            return
-
-        try:
-            h, w = frame.shape[:2]
-            cx, cy = center
-            sw, sh = 48, 56
-            x1 = max(0, cx - sw // 2)
-            y1 = max(0, cy - sh // 2)
-            x2 = min(w, x1 + sw)
-            y2 = min(h, y1 + sh)
-
-            crop = frame[y1:y2, x1:x2]
-            if crop.size > 0 and crop.shape[0] >= 24 and crop.shape[1] >= 24:
-                std_dev = float(np.std(crop))
-                if std_dev > 8.0:
-                    reference_manager.registry.add_reference(
-                        name=self._dynamic_ref_name,
-                        category="player",
-                        subcategory="dynamic",
-                        source_file_or_image=crop,
-                        threshold=0.62
-                    )
-                    self._dynamic_ref_registered = True
-        except Exception:
-            pass
 
     def _calc_delta(self, current_center: Tuple[int, int]) -> float:
         if not self._last_center:
