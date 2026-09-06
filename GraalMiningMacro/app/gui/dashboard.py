@@ -254,7 +254,25 @@ class DashboardPage(QWidget):
 
         self._set_val(self.val_conf, f"{p.overall_confidence * 100:.0f}%")
         self._set_val(self.val_perc_fps, f"{perception_fps:.1f} FPS")
-        self._set_val(self.val_proc_time, f"{proc_time_ms:.1f} ms")
+
+        proc_str = f"{proc_time_ms:.1f} ms"
+        if p.detector_timings:
+            t = p.detector_timings
+            breakdown_str = (
+                f"PROC TIME: {proc_time_ms:.1f} ms\n"
+                f"• Player: {t.get('player', 0.0):.1f} ms\n"
+                f"• Spider: {t.get('spider', 0.0):.1f} ms\n"
+                f"• Yellow Rock: {t.get('yellow_rock', 0.0):.1f} ms\n"
+                f"• Wall: {t.get('wall', 0.0):.1f} ms\n"
+                f"• Target: {t.get('target', 0.0):.1f} ms\n"
+                f"• Message: {t.get('message', 0.0):.1f} ms\n"
+                f"• Status: {t.get('status', 0.0):.1f} ms\n"
+                f"• Reference Matcher: {t.get('reference_matcher_total', 0.0):.1f} ms"
+            )
+            self.val_proc_time.setText(proc_str)
+            self.val_proc_time.setToolTip(breakdown_str)
+        else:
+            self._set_val(self.val_proc_time, proc_str)
 
         if isinstance(dropped_frames, str):
             dropped_str = dropped_frames

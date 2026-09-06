@@ -118,6 +118,8 @@ class PerceptionWorkerThread(QThread):
                     # Health status determination based on rolling window average
                     if self.mining_controller.current_state.value == "PERCEPTION_ERROR":
                         health = "ERROR"
+                    elif avg_proc_time > (target_frame_time * 1000.0 * 2.0):
+                        health = "OVERLOADED"
                     elif avg_proc_time > (target_frame_time * 1000.0 * 1.25):
                         health = "SLOW"
                     else:

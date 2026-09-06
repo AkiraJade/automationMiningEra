@@ -29,10 +29,12 @@ class MessageDetector:
     def __init__(self, default_cooldown_seconds: float = 10.0):
         self.default_cooldown_seconds = default_cooldown_seconds
         self._cooldown_until = 0.0
+        self._last_matched_ref = ""
 
     def detect(
         self,
         frame: np.ndarray,
+        roi: Optional[Tuple[int, int, int, int]] = None,
         reference_manager: Optional[object] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None
@@ -41,8 +43,20 @@ class MessageDetector:
             return self._build_result(detected=False)
 
         now = time.time()
+        # Active Cooldown Fast Path: Skip template matching if cooldown is currently active
+        if now < self._cooldown_until:
+            rem = max(0.0, self._cooldown_until - now)
+            return MessageDetection(
+                nothing_to_mine_detected=True,
+                cooldown_until=self._cooldown_until,
+                cooldown_remaining=rem,
+                confidence=0.85,
+                message_text="Cooldown Active",
+                matched_reference_name=self._last_matched_ref,
+            )
+
         h, w = frame.shape[:2]
-        hud_roi = (0, 0, w, int(h * 0.35))
+        hud_roi = roi if roi else (0, 0, w, int(h * 0.20))
 
         # 1. Reference Template Matching
         if reference_manager is not None:
@@ -55,9 +69,8 @@ class MessageDetector:
                 )
 
             if ref_match and ref_match.found:
-                # Trigger timestamp-based 10s cooldown
-                if now >= self._cooldown_until:
-                    self._cooldown_until = now + self.default_cooldown_seconds
+                self._cooldown_until = now + self.default_cooldown_seconds
+                self._last_matched_ref = ref_match.reference_name
 
                 return self._build_result(
                     detected=True,
@@ -66,9 +79,10 @@ class MessageDetector:
                     ref_name=ref_match.reference_name
                 )
 
-        # 2. Check template / text banner heuristic (top 35% of game view where HUD text banners appear)
-        hud_img = frame[0:int(h * 0.35), 0:w]
-        gray = cv2.cvtColor(hud_img, cv2.COLOR_BGR2GRAY)
+        # 2. Check template / text banner heuristic (Message ROI)
+        rx, ry, rw, rh = hud_roi
+        hud_img = frame[ry:ry+rh, rx:rx+rw]
+        gray = cv2.cvtColor(hud_img, cv2.COLOR_BGR2GRAY) if len(hud_img.shape) == 3 else hud_img
         _, text_thresh = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
 
         contours, _ = cv2.findContours(text_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -87,8 +101,8 @@ class MessageDetector:
                     break
 
         if banner_found:
-            if now >= self._cooldown_until:
-                self._cooldown_until = now + self.default_cooldown_seconds
+            self._cooldown_until = now + self.default_cooldown_seconds
+            self._last_matched_ref = "heuristic_banner"
             return self._build_result(detected=True, confidence=conf, text="Nothing to Mine Here")
 
         return self._build_result(detected=False)

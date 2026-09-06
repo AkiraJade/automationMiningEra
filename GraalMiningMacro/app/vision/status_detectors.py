@@ -47,6 +47,7 @@ class StatusDetector:
         self,
         frame: np.ndarray,
         player_detected: bool = False,
+        roi: Optional[Tuple[int, int, int, int]] = None,
         reference_manager: Optional[object] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None
@@ -66,11 +67,11 @@ class StatusDetector:
         if reference_manager is not None:
             # Check drill state references
             drill_ref = reference_manager.find_best_match(
-                frame, category="status", subcategory="drill_equipped", gray_image=gray_image, match_cache=match_cache
+                frame, category="status", subcategory="drill_equipped", roi=roi, gray_image=gray_image, match_cache=match_cache
             )
             if not drill_ref or not drill_ref.found:
                 drill_ref = reference_manager.find_best_match(
-                    frame, category="status", subcategory="drill_unequipped", gray_image=gray_image, match_cache=match_cache
+                    frame, category="status", subcategory="drill_unequipped", roi=roi, gray_image=gray_image, match_cache=match_cache
                 )
 
             if drill_ref and drill_ref.found:
@@ -83,12 +84,12 @@ class StatusDetector:
 
             # Check battery empty references
             bat_ref = reference_manager.find_best_match(
-                frame, category="status", subcategory="battery_empty", gray_image=gray_image, match_cache=match_cache
+                frame, category="status", subcategory="battery_empty", roi=roi, gray_image=gray_image, match_cache=match_cache
             )
             if not bat_ref or not bat_ref.found:
                 # Check generic status references with battery in name
                 for ref_res in reference_manager.find_all_matches(
-                    frame, category="status", gray_image=gray_image, match_cache=match_cache
+                    frame, category="status", roi=roi, gray_image=gray_image, match_cache=match_cache
                 ):
                     if "battery" in (ref_res.subcategory + ref_res.reference_name).lower():
                         bat_ref = ref_res
@@ -101,7 +102,7 @@ class StatusDetector:
 
             # Check mine state references (inside, surface, entrance, collapsed)
             mine_ref = reference_manager.find_best_match(
-                frame, category="mine", gray_image=gray_image, match_cache=match_cache
+                frame, category="mine", roi=roi, gray_image=gray_image, match_cache=match_cache
             )
             if mine_ref and mine_ref.found:
                 if not matched_ref_name:

@@ -36,6 +36,7 @@ class MiningPerceptionResult:
     overall_confidence: float = 0.0
     result_age_sec: float = 0.0
     detector_ages: dict = field(default_factory=dict)
+    detector_timings: dict = field(default_factory=dict)  # Per-detector execution times in ms
 
     def summary_text(self) -> str:
         p_str = self.player.summary_text()
@@ -80,6 +81,7 @@ class MiningPerceptionEngine:
         self.message_schedule_interval: int = 3  # Every 3 ticks
 
     def process_frame(self, frame: np.ndarray) -> MiningPerceptionResult:
+        t_start = time.perf_counter()
         now = time.time()
         result = MiningPerceptionResult(timestamp=now)
 
@@ -98,11 +100,14 @@ class MiningPerceptionEngine:
         # Compute category relative operational ROIs
         h, w = frame.shape[:2]
         world_roi = (int(w * 0.0), int(h * 0.15), int(w * 1.0), int(h * 0.70))
+        message_roi = (int(w * 0.0), int(h * 0.0), int(w * 1.0), int(h * 0.20))
+        status_roi = (int(w * 0.0), int(h * 0.0), int(w * 0.40), int(h * 0.25))
 
         # 1. YOLO Detections (if model loaded)
         yolo_dets = self.yolo_detector.detect(frame) if self.yolo_detector.is_loaded else None
 
         # 2. Player Detection (High frequency: every tick)
+        t0 = time.perf_counter()
         result.player = self.player_detector.detect(
             frame,
             yolo_detections=yolo_dets,
@@ -111,11 +116,15 @@ class MiningPerceptionEngine:
             match_cache=match_cache,
             world_roi=world_roi,
         )
+        result.detector_timings['player'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 3. Wall Detection (High frequency: every tick)
+        t0 = time.perf_counter()
         result.wall = self.wall_detector.detect(frame, player_center=result.player.center)
+        result.detector_timings['wall'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 4. Yellow Glow Detection (High frequency: every tick)
+        t0 = time.perf_counter()
         result.yellow_glow = self.yellow_detector.detect(
             frame,
             roi_bbox=world_roi,
@@ -123,8 +132,10 @@ class MiningPerceptionEngine:
             gray_image=gray_frame,
             match_cache=match_cache,
         )
+        result.detector_timings['yellow_rock'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 5. Target Detection (High frequency: every tick)
+        t0 = time.perf_counter()
         target_center = result.yellow_glow.center
         target_bbox = result.yellow_glow.bbox
         target_conf = result.yellow_glow.confidence
@@ -141,8 +152,10 @@ class MiningPerceptionEngine:
             confidence=target_conf,
             is_yellow_completed=result.yellow_glow.is_confirmed
         )
+        result.detector_timings['target'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 6. Spider Detection (High frequency: every tick)
+        t0 = time.perf_counter()
         result.spider = self.spider_detector.detect(
             frame,
             player_center=result.player.center,
@@ -152,11 +165,14 @@ class MiningPerceptionEngine:
             match_cache=match_cache,
             world_roi=world_roi,
         )
+        result.detector_timings['spider'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 7. Message Detection (Scheduled medium frequency)
+        t0 = time.perf_counter()
         if self._tick_count % self.message_schedule_interval == 1 or self._last_message_result is None:
             result.message = self.message_detector.detect(
                 frame,
+                roi=message_roi,
                 reference_manager=self.reference_manager,
                 gray_image=gray_frame,
                 match_cache=match_cache,
@@ -165,12 +181,15 @@ class MiningPerceptionEngine:
             self._last_message_timestamp = now
         else:
             result.message = self._last_message_result
+        result.detector_timings['message'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 8. Status Infrastructure (Scheduled low frequency)
+        t0 = time.perf_counter()
         if self._tick_count % self.status_schedule_interval == 1 or self._last_status_result is None:
             result.status = self.status_detector.detect(
                 frame,
                 player_detected=result.player.detected,
+                roi=status_roi,
                 reference_manager=self.reference_manager,
                 gray_image=gray_frame,
                 match_cache=match_cache,
@@ -179,11 +198,15 @@ class MiningPerceptionEngine:
             self._last_status_timestamp = now
         else:
             result.status = self._last_status_result
+        result.detector_timings['status'] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # 9. Aggregate All Active Reference Matches (Reuses per-cycle match_cache)
+        t0 = time.perf_counter()
         result.reference_matches = self.reference_manager.find_all_matches(
             frame, gray_image=gray_frame, match_cache=match_cache
         )
+        result.detector_timings['reference_matcher_total'] = round((time.perf_counter() - t0) * 1000.0, 2)
+        result.detector_timings['total_perception'] = round((time.perf_counter() - t_start) * 1000.0, 2)
 
         # 10. Record Detector Result Age Timestamps
         result.detector_ages = {

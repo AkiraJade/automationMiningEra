@@ -17,18 +17,19 @@ class PlayerDetection:
     matched_subcategory: str = ""
     matched_reference_confidence: float = 0.0
     detection_method: str = "TEMPLATE"               # "TEMPLATE", "YOLO", "HEURISTIC"
+    player_source: str = "NONE"                      # "REFERENCE", "YOLO", "HEURISTIC", "NONE"
     is_heuristic: bool = False
     rejection_reason: str = ""
 
     def summary_text(self) -> str:
         if not self.detected or not self.center:
             return "PLAYER: UNKNOWN"
-        if self.is_heuristic:
+        if self.is_heuristic or self.player_source == "HEURISTIC":
             return f"PLAYER (HEURISTIC) X:{self.center[0]} Y:{self.center[1]}"
         if self.matched_reference_name:
             pose_str = f" [{self.matched_subcategory.upper()}]" if self.matched_subcategory else ""
-            return f"PLAYER ({self.confidence * 100:.0f}%) REF: {self.matched_reference_name}{pose_str} X:{self.center[0]} Y:{self.center[1]}"
-        return f"PLAYER ({self.confidence * 100:.0f}%) X:{self.center[0]} Y:{self.center[1]}"
+            return f"PLAYER (REF {self.confidence * 100:.0f}%) REF: {self.matched_reference_name}{pose_str} X:{self.center[0]} Y:{self.center[1]}"
+        return f"PLAYER ({self.confidence * 100:.0f}%) [SOURCE:{self.player_source}] X:{self.center[0]} Y:{self.center[1]}"
 
 
 class PlayerDetector:
@@ -74,6 +75,7 @@ class PlayerDetector:
                     matched_subcategory=ref_match.subcategory,
                     matched_reference_confidence=ref_match.confidence,
                     detection_method="TEMPLATE",
+                    player_source="REFERENCE",
                     is_heuristic=False,
                 )
 
@@ -92,6 +94,7 @@ class PlayerDetector:
                         confidence=det.confidence,
                         movement_delta=delta,
                         detection_method="YOLO",
+                        player_source="YOLO",
                         is_heuristic=False,
                     )
 
@@ -114,11 +117,12 @@ class PlayerDetector:
                 confidence=heuristic_conf,
                 movement_delta=delta,
                 detection_method="HEURISTIC",
+                player_source="HEURISTIC",
                 is_heuristic=True,
             )
 
         self._last_center = None
-        return PlayerDetection(detected=False, confidence=0.0)
+        return PlayerDetection(detected=False, confidence=0.0, player_source="NONE")
 
     def _calc_delta(self, current_center: Tuple[int, int]) -> float:
         if not self._last_center:

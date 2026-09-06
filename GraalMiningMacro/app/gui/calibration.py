@@ -569,8 +569,20 @@ class CalibrationPage(QWidget):
         lbl_name.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         lbl_name.setStyleSheet("color: #ffffff;")
 
-        lbl_sub = QLabel(f"Subcategory: {ref.subcategory} | ID: {ref.id}")
-        lbl_sub.setStyleSheet("color: #888888; font-size: 10px;")
+        dim_text = ""
+        warn_style = "color: #888888; font-size: 10px;"
+        if ref.file_path and os.path.exists(ref.file_path):
+            pix = QPixmap(ref.file_path)
+            if not pix.isNull():
+                w, h = pix.width(), pix.height()
+                if w > 80 or h > 80:
+                    dim_text = f" | {w}x{h}px ⚠️ LARGE (Tight crop recommended)"
+                    warn_style = "color: #FFD600; font-size: 10px; font-weight: bold;"
+                else:
+                    dim_text = f" | {w}x{h}px (Tight Crop ✓)"
+
+        lbl_sub = QLabel(f"Subcategory: {ref.subcategory}{dim_text}")
+        lbl_sub.setStyleSheet(warn_style)
 
         info_layout.addWidget(lbl_name)
         info_layout.addWidget(lbl_sub)

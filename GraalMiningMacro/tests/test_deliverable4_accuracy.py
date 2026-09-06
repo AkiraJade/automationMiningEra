@@ -165,6 +165,51 @@ def test_multi_scale_template_matching_caching(tmp_path):
     assert len(matcher._scaled_cache) > 0
 
 
+def test_perception_profiling_timings(tmp_path):
+    """Verifies per-detector execution times are populated in detector_timings dictionary."""
+    engine = MiningPerceptionEngine(reference_dir=str(tmp_path))
+    frame = np.full((200, 200, 3), 50, dtype=np.uint8)
+
+    res = engine.process_frame(frame)
+    assert isinstance(res, MiningPerceptionResult)
+    assert isinstance(res.detector_timings, dict)
+    
+    required_keys = ["player", "spider", "yellow_rock", "wall", "target", "message", "status", "reference_matcher_total", "total_perception"]
+    for key in required_keys:
+        assert key in res.detector_timings
+        assert res.detector_timings[key] >= 0.0
+
+
+def test_player_source_explicit_reporting(tmp_path):
+    """Verifies PlayerDetection.player_source distinguishes REFERENCE from HEURISTIC."""
+    manager = ReferenceManager(base_dir=str(tmp_path))
+    detector = PlayerDetector()
+
+    # Empty frame -> player_source == "HEURISTIC"
+    frame_empty = np.zeros((200, 200, 3), dtype=np.uint8)
+    det_heur = detector.detect(frame_empty, reference_manager=manager)
+    assert det_heur.player_source == "HEURISTIC"
+    assert det_heur.detection_method == "HEURISTIC"
+
+    # Template match -> player_source == "REFERENCE"
+    rng = np.random.RandomState(321)
+    patch = rng.randint(150, 255, (25, 25, 3), dtype=np.uint8)
+    frame = np.zeros((200, 200, 3), dtype=np.uint8)
+    frame[40:65, 40:65] = patch
+
+    manager.registry.add_reference(
+        name="p_ref",
+        category="player",
+        subcategory="down",
+        source_file_or_image=patch,
+        threshold=0.75
+    )
+
+    det_ref = detector.detect(frame, reference_manager=manager)
+    assert det_ref.player_source == "REFERENCE"
+    assert det_ref.detection_method == "TEMPLATE"
+
+
 def test_dry_run_mode_strictly_preserved():
     """Confirms dry-run mode remains active and zero game inputs are generated."""
     assert safety.dry_run is True
