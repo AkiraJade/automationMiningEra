@@ -14,7 +14,8 @@ def test_player_detection_centered():
     assert isinstance(det, PlayerDetection)
     assert det.detected is True
     assert det.center == (100, 100)
-    assert det.confidence >= 0.65
+    assert det.confidence == 0.30
+    assert det.detection_method == "HEURISTIC"
     assert det.movement_delta == 0.0
 
 

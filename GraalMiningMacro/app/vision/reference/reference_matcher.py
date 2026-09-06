@@ -17,6 +17,8 @@ class ReferenceMatcher:
     def __init__(self):
         # Template cache: file_path -> (bgr_array, gray_array, mtime)
         self._cache: Dict[str, Tuple[np.ndarray, np.ndarray, float]] = {}
+        # Scaled template cache: (file_path, scale, mtime) -> scaled_gray_array
+        self._scaled_cache: Dict[Tuple[str, float, float], np.ndarray] = {}
 
     def _get_template(self, file_path: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """Retrieves BGR and Grayscale template arrays from memory cache, reading disk if modified."""
@@ -43,17 +45,51 @@ class ReferenceMatcher:
             logger.error(f"Error loading template image '{file_path}': {e}")
             return None, None
 
+    def _get_scaled_template(self, file_path: str, scale: float) -> Optional[np.ndarray]:
+        """Retrieves a cached scaled grayscale template array."""
+        _, gray = self._get_template(file_path)
+        if gray is None:
+            return None
+
+        if abs(scale - 1.0) < 1e-3:
+            return gray
+
+        try:
+            mtime = os.path.getmtime(file_path)
+            scaled_key = (file_path, round(scale, 3), mtime)
+            if scaled_key in self._scaled_cache:
+                return self._scaled_cache[scaled_key]
+
+            h, w = gray.shape[:2]
+            new_w = max(1, int(w * scale))
+            new_h = max(1, int(h * scale))
+            scaled_gray = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            self._scaled_cache[scaled_key] = scaled_gray
+            return scaled_gray
+        except Exception as e:
+            logger.error(f"Error scaling template image '{file_path}' at scale {scale}: {e}")
+            return None
+
     def match_single(
         self,
         image: np.ndarray,
         ref: ReferenceImage,
         roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
-        match_cache: Optional[Dict[Tuple[str, Optional[Tuple[int, int, int, int]]], ReferenceMatchResult]] = None
+        match_cache: Optional[Dict[Tuple[str, Optional[Tuple[int, int, int, int]]], ReferenceMatchResult]] = None,
+        multi_scale: bool = True
     ) -> ReferenceMatchResult:
         """Evaluates a single ReferenceImage against an image frame (or ROI)."""
         if not ref.enabled or image is None or image.size == 0:
-            return ReferenceMatchResult(found=False, reference_id=ref.id, reference_name=ref.name, category=ref.category, subcategory=ref.subcategory)
+            return ReferenceMatchResult(
+                found=False,
+                reference_id=ref.id,
+                reference_name=ref.name,
+                category=ref.category,
+                subcategory=ref.subcategory,
+                method="TEMPLATE",
+                rejection_reason="DISABLED_OR_INVALID_INPUT"
+            )
 
         # Check per-cycle match cache first to avoid duplicate cv2.matchTemplate calls
         cache_key = (ref.id, roi)
@@ -68,6 +104,8 @@ class ReferenceMatcher:
                 reference_name=ref.name,
                 category=ref.category,
                 subcategory=ref.subcategory,
+                method="TEMPLATE",
+                rejection_reason="FILE_MISSING",
                 error_message="Reference file missing or unreadable"
             )
             if match_cache is not None:
@@ -75,6 +113,7 @@ class ReferenceMatcher:
             return res_err
 
         try:
+            from app.core import config
             offset_x, offset_y = 0, 0
 
             # Reuse single-pass converted grayscale image if available
@@ -98,42 +137,74 @@ class ReferenceMatcher:
                 offset_x, offset_y = rx, ry
 
             img_h, img_w = search_gray.shape[:2]
-            tpl_h, tpl_w = tpl_gray.shape[:2]
 
-            # Dimension safety: resize template if larger than search region
-            if img_h < tpl_h or img_w < tpl_w:
-                scale_h = (img_h - 2) / float(tpl_h) if img_h > 2 else 1.0
-                scale_w = (img_w - 2) / float(tpl_w) if img_w > 2 else 1.0
-                scale = min(scale_h, scale_w)
+            # Multi-scale setup
+            scales_to_test = [1.0]
+            if multi_scale:
+                min_s = getattr(config, "MIN_SCALE", 0.85)
+                max_s = getattr(config, "MAX_SCALE", 1.15)
+                step_s = getattr(config, "SCALE_STEP", 0.05)
+                scales_to_test = list(np.arange(min_s, max_s + 1e-5, step_s))
+                # Ensure 1.0 is checked first for performance short-circuiting
+                scales_to_test = sorted(scales_to_test, key=lambda s: abs(s - 1.0))
 
-                if scale <= 0.1:
-                    res_small = ReferenceMatchResult(
-                        found=False,
-                        reference_id=ref.id,
-                        reference_name=ref.name,
-                        category=ref.category,
-                        subcategory=ref.subcategory,
-                        error_message="Search region too small for template"
-                    )
-                    if match_cache is not None:
-                        match_cache[cache_key] = res_small
-                    return res_small
+            best_max_val = -1.0
+            best_max_loc = (0, 0)
+            best_scale = 1.0
+            best_tpl_w, best_tpl_h = tpl_gray.shape[1], tpl_gray.shape[0]
 
-                new_w = max(1, int(tpl_w * scale))
-                new_h = max(1, int(tpl_h * scale))
-                tpl_gray = cv2.resize(tpl_gray, (new_w, new_h))
-                tpl_h, tpl_w = new_h, new_w
+            for s in scales_to_test:
+                scaled_tpl = self._get_scaled_template(ref.file_path, s)
+                if scaled_tpl is None:
+                    continue
 
-            # Run OpenCV template matching
-            res = cv2.matchTemplate(search_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                th, tw = scaled_tpl.shape[:2]
+                if img_h < th or img_w < tw:
+                    continue
 
-            match_x = max_loc[0] + offset_x
-            match_y = max_loc[1] + offset_y
-            center_x = match_x + tpl_w // 2
-            center_y = match_y + tpl_h // 2
+                res = cv2.matchTemplate(search_gray, scaled_tpl, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, max_loc = cv2.minMaxLoc(res)
 
-            found = float(max_val) >= float(ref.threshold)
+                if max_val > best_max_val:
+                    best_max_val = float(max_val)
+                    best_max_loc = max_loc
+                    best_scale = float(s)
+                    best_tpl_w, best_tpl_h = tw, th
+
+                # Short-circuit if scale=1.0 has excellent match
+                if abs(s - 1.0) < 1e-3 and best_max_val >= 0.85:
+                    break
+
+            if best_max_val < 0.0:
+                res_small = ReferenceMatchResult(
+                    found=False,
+                    reference_id=ref.id,
+                    reference_name=ref.name,
+                    category=ref.category,
+                    subcategory=ref.subcategory,
+                    raw_score=0.0,
+                    confidence=0.0,
+                    method="TEMPLATE",
+                    scale=1.0,
+                    rejection_reason="SEARCH_REGION_TOO_SMALL",
+                    error_message="Search region too small for template scales"
+                )
+                if match_cache is not None:
+                    match_cache[cache_key] = res_small
+                return res_small
+
+            match_x = best_max_loc[0] + offset_x
+            match_y = best_max_loc[1] + offset_y
+            center_x = match_x + best_tpl_w // 2
+            center_y = match_y + best_tpl_h // 2
+
+            min_conf = getattr(config, "MINIMUM_MATCH_CONFIDENCE", 0.65)
+            thresh = float(ref.threshold)
+            found = (best_max_val >= thresh) and (best_max_val >= min_conf)
+
+            rejection_reason = ""
+            if not found:
+                rejection_reason = f"MATCH_SCORE_BELOW_THRESHOLD ({best_max_val:.2f} < {thresh:.2f})"
 
             res_match = ReferenceMatchResult(
                 found=found,
@@ -141,9 +212,13 @@ class ReferenceMatcher:
                 reference_name=ref.name,
                 category=ref.category,
                 subcategory=ref.subcategory,
-                confidence=float(max_val),
-                bbox=(match_x, match_y, tpl_w, tpl_h),
+                raw_score=best_max_val,
+                confidence=best_max_val if found else 0.0,
+                bbox=(match_x, match_y, best_tpl_w, best_tpl_h),
                 center=(center_x, center_y),
+                method="TEMPLATE",
+                scale=best_scale,
+                rejection_reason=rejection_reason,
             )
             if match_cache is not None:
                 match_cache[cache_key] = res_match
@@ -156,6 +231,10 @@ class ReferenceMatcher:
                 reference_name=ref.name,
                 category=ref.category,
                 subcategory=ref.subcategory,
+                raw_score=0.0,
+                confidence=0.0,
+                method="TEMPLATE",
+                rejection_reason=f"EXCEPTION ({e})",
                 error_message=str(e)
             )
             if match_cache is not None:
@@ -180,14 +259,15 @@ class ReferenceMatcher:
             if res.found:
                 results.append(res)
 
-        # Sort matches by confidence descending
-        results.sort(key=lambda r: r.confidence, reverse=True)
+        # Sort matches by raw_score descending
+        results.sort(key=lambda r: r.raw_score, reverse=True)
         return results
 
     def match_all(
         self,
         image: np.ndarray,
         registry: ReferenceRegistry,
+        roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None
     ) -> List[ReferenceMatchResult]:
@@ -197,9 +277,9 @@ class ReferenceMatcher:
 
         for ref in all_refs:
             if ref.enabled:
-                res = self.match_single(image, ref, gray_image=gray_image, match_cache=match_cache)
+                res = self.match_single(image, ref, roi=roi, gray_image=gray_image, match_cache=match_cache)
                 if res.found:
                     results.append(res)
 
-        results.sort(key=lambda r: r.confidence, reverse=True)
+        results.sort(key=lambda r: r.raw_score, reverse=True)
         return results

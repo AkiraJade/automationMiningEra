@@ -50,6 +50,7 @@ class ReferenceManager:
         self,
         image: np.ndarray,
         category: Optional[str] = None,
+        roi: Optional[Tuple[int, int, int, int]] = None,
         gray_image: Optional[np.ndarray] = None,
         match_cache: Optional[dict] = None
     ) -> List[ReferenceMatchResult]:
@@ -59,9 +60,9 @@ class ReferenceManager:
 
         if category:
             return self.matcher.match_all_in_category(
-                image, category, self.registry, gray_image=gray_image, match_cache=match_cache
+                image, category, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache
             )
         else:
             return self.matcher.match_all(
-                image, self.registry, gray_image=gray_image, match_cache=match_cache
+                image, self.registry, roi=roi, gray_image=gray_image, match_cache=match_cache
             )

@@ -16,13 +16,15 @@ class YellowGlowDetectionResult:
     bbox: Optional[Tuple[int, int, int, int]] = None
     center: Optional[Tuple[int, int]] = None
     area: int = 0
-    confidence: float = 0.0
+    raw_score: float = 0.0
+    confidence: float = 0.0                  # Final validated confidence score
     matched_reference_name: str = ""
+    rejection_reason: str = ""
 
     def summary_text(self) -> str:
         if not self.is_confirmed:
             if self.detected_raw:
-                return f"YELLOW GLOW (ACCUMULATING {self.consecutive_frames}/{self.required_frames})"
+                return f"YELLOW GLOW (ACCUMULATING {self.consecutive_frames}/{self.required_frames}) RAW:{self.raw_score:.2f}"
             return "YELLOW GLOW: NONE"
         ref_text = f" REF:{self.matched_reference_name}" if self.matched_reference_name else ""
         return f"★ ROCK COMPLETED (YELLOW GLOW {self.confidence * 100:.0f}%{ref_text})"
@@ -63,87 +65,81 @@ class YellowGlowDetector:
             self._consecutive_count = 0
             return YellowGlowDetectionResult(required_frames=self.required_frames)
 
+        raw_match = None
+        cand_bbox = None
+        cand_center = None
+        cand_raw_score = 0.0
+        ref_name = ""
+
         # 1. Reference Template Matching for Completed Yellow Rock
         if reference_manager is not None:
             ref_match = reference_manager.find_best_match(
-                frame, category="rock", subcategory="yellow_complete", gray_image=gray_image, match_cache=match_cache
+                frame, category="rock", subcategory="yellow_complete", roi=roi_bbox, gray_image=gray_image, match_cache=match_cache
             )
             if not ref_match or not ref_match.found:
                 ref_match = reference_manager.find_best_match(
-                    frame, category="rock", gray_image=gray_image, match_cache=match_cache
+                    frame, category="rock", roi=roi_bbox, gray_image=gray_image, match_cache=match_cache
                 )
 
             if ref_match and ref_match.found and "yellow" in (ref_match.subcategory + ref_match.reference_name).lower():
-                self._consecutive_count += 1
-                self._last_bbox = ref_match.bbox
-                self._last_center = ref_match.center
-                is_confirmed = (self._consecutive_count >= self.required_frames)
+                raw_match = ref_match
+                cand_raw_score = getattr(ref_match, "raw_score", ref_match.confidence)
+                cand_bbox = ref_match.bbox
+                cand_center = ref_match.center
+                ref_name = ref_match.reference_name
 
-                return YellowGlowDetectionResult(
-                    detected_raw=True,
-                    is_confirmed=is_confirmed,
-                    consecutive_frames=self._consecutive_count,
-                    required_frames=self.required_frames,
-                    bbox=ref_match.bbox,
-                    center=ref_match.center,
-                    area=ref_match.bbox[2] * ref_match.bbox[3] if ref_match.bbox else 100,
-                    confidence=ref_match.confidence,
-                    matched_reference_name=ref_match.reference_name,
-                )
+        # 2. HSV Color Verification Fallback if no reference match
+        if not cand_bbox:
+            target_frame = frame
+            offset_x, offset_y = 0, 0
+            if roi_bbox:
+                cropped = ImagePreprocessor.crop_roi(frame, roi_bbox)
+                if cropped is not None and cropped.size > 0:
+                    target_frame = cropped
+                    offset_x, offset_y = roi_bbox[0], roi_bbox[1]
 
-        target_frame = frame
-        offset_x, offset_y = 0, 0
+            hsv = ImagePreprocessor.bgr_to_hsv(target_frame)
+            mask = ImagePreprocessor.apply_color_mask(hsv, tuple(self.hsv_min), tuple(self.hsv_max))
 
-        if roi_bbox:
-            cropped = ImagePreprocessor.crop_roi(frame, roi_bbox)
-            if cropped is not None and cropped.size > 0:
-                target_frame = cropped
-                offset_x, offset_y = roi_bbox[0], roi_bbox[1]
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel)
 
-        hsv = ImagePreprocessor.bgr_to_hsv(target_frame)
-        mask = ImagePreprocessor.apply_color_mask(hsv, tuple(self.hsv_min), tuple(self.hsv_max))
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            best_area = 0
+            for cnt in contours:
+                area = int(cv2.contourArea(cnt))
+                if area >= self.min_area:
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    x += offset_x
+                    y += offset_y
+                    conf = min(1.0, area / 180.0)
+                    if area > best_area:
+                        best_area = area
+                        cand_bbox = (x, y, w, h)
+                        cand_center = (x + w // 2, y + h // 2)
+                        cand_raw_score = conf
 
-        # Morphological opening & dilation to clean noise
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel)
-
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        best_area = 0
-        best_bbox = None
-        best_center = None
-        best_conf = 0.0
-
-        for cnt in contours:
-            area = int(cv2.contourArea(cnt))
-            if area >= self.min_area:
-                x, y, w, h = cv2.boundingRect(cnt)
-                x += offset_x
-                y += offset_y
-                conf = min(1.0, area / 180.0)
-
-                if area > best_area:
-                    best_area = area
-                    best_bbox = (x, y, w, h)
-                    best_center = (x + w // 2, y + h // 2)
-                    best_conf = conf
-
-        if best_bbox:
+        if cand_bbox and cand_raw_score >= 0.50:
             self._consecutive_count += 1
-            self._last_bbox = best_bbox
-            self._last_center = best_center
+            self._last_bbox = cand_bbox
+            self._last_center = cand_center
             is_confirmed = (self._consecutive_count >= self.required_frames)
+
+            # Separate raw score from final validated confidence score
+            final_confidence = min(1.0, cand_raw_score * (0.80 + 0.20 * min(1.0, self._consecutive_count / float(self.required_frames))))
 
             return YellowGlowDetectionResult(
                 detected_raw=True,
                 is_confirmed=is_confirmed,
                 consecutive_frames=self._consecutive_count,
                 required_frames=self.required_frames,
-                bbox=best_bbox,
-                center=best_center,
-                area=best_area,
-                confidence=best_conf,
+                bbox=cand_bbox,
+                center=cand_center,
+                area=cand_bbox[2] * cand_bbox[3],
+                raw_score=cand_raw_score,
+                confidence=final_confidence,
+                matched_reference_name=ref_name,
             )
         else:
             self._consecutive_count = 0

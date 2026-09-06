@@ -6,7 +6,7 @@
         "subcategory": "nothing_to_mine",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\messages\\nothingheretomine_10df7a3d.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617234.1161613,
         "notes": "nothing to mine here image"
     },
@@ -17,7 +17,7 @@
         "subcategory": "normal",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\rock\\firstrock_eb815c7b.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617276.7855096,
         "notes": "1stRock"
     },
@@ -28,7 +28,7 @@
         "subcategory": "normal",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\rock\\secondrock_266002b7.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617302.297428,
         "notes": "2ndRock iteration"
     },
@@ -39,7 +39,7 @@
         "subcategory": "normal",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\rock\\thirdrock_c18bb0d8.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617369.0112782,
         "notes": "3rd rock iteration"
     },
@@ -50,7 +50,7 @@
         "subcategory": "yellow_complete",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\rock\\rockdone_dcf9d9ed.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617408.434964,
         "notes": "rock is glowing, its done, we can go next position"
     },
@@ -61,7 +61,7 @@
         "subcategory": "threat",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\spider\\spider_b8fdf268.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617789.8008027,
         "notes": "spiderLeft"
     },
@@ -72,7 +72,7 @@
         "subcategory": "left",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\left_93a5880e.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617896.0893168,
         "notes": "left character"
     },
@@ -83,7 +83,7 @@
         "subcategory": "down",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\down_c765f528.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617939.5956364,
         "notes": "player downward"
     },
@@ -94,7 +94,7 @@
         "subcategory": "right",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\right_28d53da0.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788617998.9101388,
         "notes": "character facing right"
     },
@@ -105,7 +105,7 @@
         "subcategory": "up",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\up_032bb81a.png",
         "enabled": true,
-        "threshold": 0.99,
+        "threshold": 0.65,
         "created_at": 1788618026.6278896,
         "notes": "character facing up"
     },
@@ -116,7 +116,7 @@
         "subcategory": "mining",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\mineupdrillequiped_138e3ebe.png",
         "enabled": true,
-        "threshold": 0.8,
+        "threshold": 0.65,
         "created_at": 1788618137.256551,
         "notes": ""
     },
@@ -127,7 +127,7 @@
         "subcategory": "mining",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\minedowndrillequiped_d6524c4a.png",
         "enabled": true,
-        "threshold": 0.8,
+        "threshold": 0.65,
         "created_at": 1788618165.9270115,
         "notes": ""
     },
@@ -138,7 +138,7 @@
         "subcategory": "mining",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\mineleftdrillequiped_75ce8ff2.png",
         "enabled": true,
-        "threshold": 0.8,
+        "threshold": 0.65,
         "created_at": 1788618210.9823167,
         "notes": ""
     },
@@ -149,7 +149,7 @@
         "subcategory": "mining",
         "file_path": "C:\\xampp\\htdocs\\GraalEra-Auto\\GraalMiningMacro\\reference\\player\\minerightdrillequiped_c129b7ff.png",
         "enabled": true,
-        "threshold": 0.8,
+        "threshold": 0.65,
         "created_at": 1788618219.498499,
         "notes": ""
     }

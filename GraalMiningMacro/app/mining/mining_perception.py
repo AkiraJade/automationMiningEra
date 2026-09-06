@@ -95,6 +95,10 @@ class MiningPerceptionEngine:
         # Per-cycle reference match cache to eliminate duplicate cv2.matchTemplate calls per tick
         match_cache: dict = {}
 
+        # Compute category relative operational ROIs
+        h, w = frame.shape[:2]
+        world_roi = (int(w * 0.0), int(h * 0.15), int(w * 1.0), int(h * 0.70))
+
         # 1. YOLO Detections (if model loaded)
         yolo_dets = self.yolo_detector.detect(frame) if self.yolo_detector.is_loaded else None
 
@@ -105,6 +109,7 @@ class MiningPerceptionEngine:
             reference_manager=self.reference_manager,
             gray_image=gray_frame,
             match_cache=match_cache,
+            world_roi=world_roi,
         )
 
         # 3. Wall Detection (High frequency: every tick)
@@ -113,6 +118,7 @@ class MiningPerceptionEngine:
         # 4. Yellow Glow Detection (High frequency: every tick)
         result.yellow_glow = self.yellow_detector.detect(
             frame,
+            roi_bbox=world_roi,
             reference_manager=self.reference_manager,
             gray_image=gray_frame,
             match_cache=match_cache,
@@ -144,6 +150,7 @@ class MiningPerceptionEngine:
             reference_manager=self.reference_manager,
             gray_image=gray_frame,
             match_cache=match_cache,
+            world_roi=world_roi,
         )
 
         # 7. Message Detection (Scheduled medium frequency)

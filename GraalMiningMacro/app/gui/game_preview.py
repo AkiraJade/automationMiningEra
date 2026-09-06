@@ -179,7 +179,7 @@ class GamePreviewWidget(QWidget):
         if p is None:
             return
 
-        # 1. Player Detection (Cyan)
+        # 1. Player Detection (Cyan for TEMPLATE match, Dark Cyan/Dash for HEURISTIC)
         if p.player.detected and p.player.bbox and p.player.center:
             px, py, pw, ph = p.player.bbox
             sx = int(gx + px * scale)
@@ -187,10 +187,17 @@ class GamePreviewWidget(QWidget):
             sw = int(pw * scale)
             sh = int(ph * scale)
 
-            painter.setPen(QPen(QColor("#00E5FF"), 2))
+            method_str = getattr(p.player, "detection_method", "TEMPLATE")
+            if method_str == "HEURISTIC":
+                painter.setPen(QPen(QColor("#00B0FF"), 1, Qt.PenStyle.DashLine))
+                tag = "PLAYER (HEURISTIC)"
+            else:
+                painter.setPen(QPen(QColor("#00E5FF"), 2, Qt.PenStyle.SolidLine))
+                ref_name = getattr(p.player, "matched_reference_name", "")
+                tag = f"PLAYER ({p.player.confidence * 100:.0f}%) REF:{ref_name} RAW:{p.player.raw_score:.2f}"
+
             painter.drawRect(sx, sy, sw, sh)
-            ref_tag = f" REF: {p.player.matched_reference_name}" if p.player.matched_reference_name else ""
-            painter.drawText(sx, sy - 5, f"PLAYER ({p.player.confidence * 100:.0f}%){ref_tag} X:{p.player.center[0]} Y:{p.player.center[1]}")
+            painter.drawText(sx, sy - 5, f"{tag} X:{p.player.center[0]} Y:{p.player.center[1]}")
 
         # 2. Wall Detection (Green Outline + Arrow)
         if p.wall.detected and p.wall.bbox:
@@ -214,8 +221,9 @@ class GamePreviewWidget(QWidget):
 
             painter.setPen(QPen(QColor("#FFEA00"), 3, Qt.PenStyle.SolidLine))
             painter.drawRect(sx, sy, sw, sh)
-            ref_tag = f" REF: {p.yellow_glow.matched_reference_name}" if p.yellow_glow.matched_reference_name else ""
-            painter.drawText(sx, sy - 5, f"★ ROCK COMPLETED (YELLOW {p.yellow_glow.confidence * 100:.0f}%){ref_tag}")
+            ref_name = getattr(p.yellow_glow, "matched_reference_name", "")
+            ref_tag = f" REF:{ref_name}" if ref_name else ""
+            painter.drawText(sx, sy - 5, f"★ ROCK COMPLETED ({p.yellow_glow.confidence * 100:.0f}%){ref_tag} RAW:{p.yellow_glow.raw_score:.2f}")
 
         # 4. Target Rock (Orange)
         elif p.target.detected and p.target.bbox:
@@ -229,17 +237,23 @@ class GamePreviewWidget(QWidget):
             painter.drawRect(sx, sy, sw, sh)
             painter.drawText(sx, sy - 5, f"TARGET (ITER {p.target.iteration}/3)")
 
-        # 5. Spider Threat (Bright Red)
-        if p.spider.detected and p.spider.bbox:
+        # 5. Spider Threat (Bright Red if confirmed, Orange/Dash if candidate)
+        if p.spider.bbox:
             sx = int(gx + p.spider.bbox[0] * scale)
             sy = int(gy + p.spider.bbox[1] * scale)
             sw = int(p.spider.bbox[2] * scale)
             sh = int(p.spider.bbox[3] * scale)
+            ref_name = getattr(p.spider, "matched_reference_name", "")
+            ref_tag = f" REF:{ref_name}" if ref_name else ""
 
-            painter.setPen(QPen(QColor("#FF1744"), 3))
-            painter.drawRect(sx, sy, sw, sh)
-            ref_tag = f" REF: {p.spider.matched_reference_name}" if p.spider.matched_reference_name else ""
-            painter.drawText(sx, sy - 5, f"🚨 SPIDER DETECTED ({p.spider.confidence * 100:.0f}%){ref_tag}")
+            if p.spider.detected:
+                painter.setPen(QPen(QColor("#FF1744"), 3, Qt.PenStyle.SolidLine))
+                painter.drawRect(sx, sy, sw, sh)
+                painter.drawText(sx, sy - 5, f"🚨 SPIDER DETECTED ({p.spider.confidence * 100:.0f}%){ref_tag} RAW:{p.spider.raw_score:.2f}")
+            elif getattr(p.spider, "is_candidate", False):
+                painter.setPen(QPen(QColor("#FF9100"), 2, Qt.PenStyle.DashLine))
+                painter.drawRect(sx, sy, sw, sh)
+                painter.drawText(sx, sy - 5, f"SPIDER CANDIDATE ({p.spider.consecutive_frames}/{p.spider.required_frames}){ref_tag} RAW:{p.spider.raw_score:.2f}")
 
         # 6. Nothing to Mine Message Banner
         if p.message.nothing_to_mine_detected:

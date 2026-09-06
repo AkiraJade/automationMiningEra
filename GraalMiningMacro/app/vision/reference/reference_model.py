@@ -75,12 +75,17 @@ class ReferenceMatchResult:
     reference_name: str = ""
     category: str = ""
     subcategory: str = ""
+    raw_score: float = 0.0
     confidence: float = 0.0
     bbox: Optional[Tuple[int, int, int, int]] = None  # (x, y, w, h)
     center: Optional[Tuple[int, int]] = None  # (x, y)
+    method: str = "TEMPLATE"
+    scale: float = 1.0
+    rejection_reason: str = ""
     error_message: str = ""
 
     def summary_text(self) -> str:
         if not self.found:
-            return f"REF [{self.category.upper()}]: NO MATCH"
-        return f"REF {self.reference_name} ({self.confidence * 100:.0f}%) BBOX:{self.bbox}"
+            reason_str = f" ({self.rejection_reason})" if self.rejection_reason else ""
+            return f"REF [{self.category.upper()}]: NO MATCH{reason_str}"
+        return f"REF {self.reference_name} (RAW:{self.raw_score:.2f} CONF:{self.confidence * 100:.0f}%) BBOX:{self.bbox}"

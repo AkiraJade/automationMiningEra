@@ -303,7 +303,7 @@ class ReferenceTestDialog(QDialog):
     def __init__(self, frame_bgr: np.ndarray, reference_manager: ReferenceManager, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Reference Library Diagnostic Test Results")
-        self.resize(750, 480)
+        self.resize(900, 520)
         self.setStyleSheet("background-color: #1a1a24; color: #ffffff;")
 
         self.frame_bgr = frame_bgr
@@ -319,12 +319,13 @@ class ReferenceTestDialog(QDialog):
         layout.addWidget(title)
 
         table = QTableWidget()
-        table.setColumnCount(6)
+        table.setColumnCount(8)
         table.setHorizontalHeaderLabels([
-            "Category", "Reference Name", "Match Result", "Confidence", "Threshold", "Bounding Box (X, Y, W, H)"
+            "Category", "Reference Name", "Match Result", "Raw Score", "Final Conf", "Bounding Box", "Scale", "Rejection Reason"
         ])
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         table.setStyleSheet(
             "QTableWidget { background-color: #101014; color: #ffffff; gridline-color: #2d2d38; }"
             "QHeaderView::section { background-color: #1a1a24; color: #00E5FF; font-weight: bold; }"
@@ -344,22 +345,34 @@ class ReferenceTestDialog(QDialog):
                 item_res.setForeground(QColor("#888888"))
                 table.setItem(row, 2, item_res)
                 table.setItem(row, 3, QTableWidgetItem("N/A"))
+                table.setItem(row, 4, QTableWidgetItem("N/A"))
+                table.setItem(row, 5, QTableWidgetItem("N/A"))
+                table.setItem(row, 6, QTableWidgetItem("1.00x"))
+                table.setItem(row, 7, QTableWidgetItem("Reference disabled"))
             elif match_res and match_res.found:
                 item_res = QTableWidgetItem("MATCH PASSED ✓")
                 item_res.setForeground(QColor("#00FF66"))
                 table.setItem(row, 2, item_res)
-                table.setItem(row, 3, QTableWidgetItem(f"{match_res.confidence * 100:.1f}%"))
+                table.setItem(row, 3, QTableWidgetItem(f"{match_res.raw_score:.2f}"))
+                table.setItem(row, 4, QTableWidgetItem(f"{match_res.confidence * 100:.1f}%"))
+                bbox_str = str(match_res.bbox) if match_res.bbox else "N/A"
+                table.setItem(row, 5, QTableWidgetItem(bbox_str))
+                table.setItem(row, 6, QTableWidgetItem(f"{match_res.scale:.2f}x"))
+                table.setItem(row, 7, QTableWidgetItem("PASSED"))
             else:
-                conf_str = f"{match_res.confidence * 100:.1f}%" if match_res else "N/A"
+                raw_str = f"{match_res.raw_score:.2f}" if match_res else "0.00"
+                conf_str = "0.0%"
                 item_res = QTableWidgetItem("NO MATCH ✗")
                 item_res.setForeground(QColor("#FF1744"))
                 table.setItem(row, 2, item_res)
-                table.setItem(row, 3, QTableWidgetItem(conf_str))
-
-            table.setItem(row, 4, QTableWidgetItem(f"{ref.threshold * 100:.0f}%"))
-
-            bbox_str = str(match_res.bbox) if (match_res and match_res.bbox) else "N/A"
-            table.setItem(row, 5, QTableWidgetItem(bbox_str))
+                table.setItem(row, 3, QTableWidgetItem(raw_str))
+                table.setItem(row, 4, QTableWidgetItem(conf_str))
+                bbox_str = str(match_res.bbox) if (match_res and match_res.bbox) else "N/A"
+                table.setItem(row, 5, QTableWidgetItem(bbox_str))
+                scale_str = f"{match_res.scale:.2f}x" if match_res else "1.00x"
+                table.setItem(row, 6, QTableWidgetItem(scale_str))
+                rej_reason = match_res.rejection_reason if match_res else "Unknown"
+                table.setItem(row, 7, QTableWidgetItem(rej_reason))
 
         layout.addWidget(table, stretch=1)
 

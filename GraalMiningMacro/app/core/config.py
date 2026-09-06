@@ -62,6 +62,18 @@ class VisionConfig:
     yolo_device: str = "cpu"
     debug_overlay_enabled: bool = True
 
+    # Deliverable 4 Accuracy & Performance Tuning Parameters
+    min_scale: float = 0.90
+    max_scale: float = 1.10
+    scale_step: float = 0.05
+    minimum_match_confidence: float = 0.65
+    minimum_match_size: list[int] = field(default_factory=lambda: [12, 12])
+    maximum_match_size: list[int] = field(default_factory=lambda: [150, 150])
+    spider_confirm_frames: int = 2
+    spider_max_distance: float = 800.0
+    yellow_confirm_frames: int = 3
+    playable_world_roi: list[float] = field(default_factory=lambda: [0.05, 0.05, 0.90, 0.85])
+
 
 @dataclass
 class SafetyConfig:

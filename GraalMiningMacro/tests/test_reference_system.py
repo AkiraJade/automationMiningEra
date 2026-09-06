@@ -225,6 +225,7 @@ def test_spider_detector_with_reference_and_spatial_dist(temp_ref_dir):
     )
 
     player_center = (150, 150)
+    _ = detector.detect(frame, player_center=player_center, reference_manager=manager)
     res = detector.detect(frame, player_center=player_center, reference_manager=manager)
 
     assert res.detected is True
@@ -236,8 +237,9 @@ def test_yellow_rock_detector_with_reference_and_temporal_confirmation(temp_ref_
     manager = ReferenceManager(base_dir=temp_ref_dir)
     detector = YellowGlowDetector(required_frames=2)
 
+    rng = np.random.RandomState(789)
     frame = np.zeros((200, 200, 3), dtype=np.uint8)
-    yellow_patch = np.full((25, 25, 3), 200, dtype=np.uint8)
+    yellow_patch = rng.randint(180, 255, (25, 25, 3), dtype=np.uint8)
     yellow_patch[:, :, 0] = 0   # B
     yellow_patch[:, :, 1] = 255 # G
     yellow_patch[:, :, 2] = 255 # R (Yellow)
