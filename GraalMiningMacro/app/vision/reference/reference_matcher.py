@@ -208,8 +208,10 @@ class ReferenceMatcher:
 
             res_match = ReferenceMatchResult(
                 found=found,
+                accepted=found,
                 reference_id=ref.id,
                 reference_name=ref.name,
+                matched_reference=ref.name,
                 category=ref.category,
                 subcategory=ref.subcategory,
                 raw_score=best_max_val,

@@ -71,21 +71,28 @@ class ReferenceMatchResult:
     """Result of template matching evaluation against a reference image."""
 
     found: bool = False
+    accepted: bool = False                            # Equivalent to found after multi-factor validation
     reference_id: str = ""
     reference_name: str = ""
+    matched_reference: str = ""                       # Basename / name of matched reference
     category: str = ""
     subcategory: str = ""
     raw_score: float = 0.0
     confidence: float = 0.0
     bbox: Optional[Tuple[int, int, int, int]] = None  # (x, y, w, h)
-    center: Optional[Tuple[int, int]] = None  # (x, y)
+    center: Optional[Tuple[int, int]] = None          # (x, y)
     method: str = "TEMPLATE"
     scale: float = 1.0
+    roi_valid: bool = True
+    size_valid: bool = True
+    spatial_valid: bool = True
+    temporal_valid: bool = True
     rejection_reason: str = ""
     error_message: str = ""
 
     def summary_text(self) -> str:
-        if not self.found:
+        if not self.found and not self.accepted:
             reason_str = f" ({self.rejection_reason})" if self.rejection_reason else ""
             return f"REF [{self.category.upper()}]: NO MATCH{reason_str}"
-        return f"REF {self.reference_name} (RAW:{self.raw_score:.2f} CONF:{self.confidence * 100:.0f}%) BBOX:{self.bbox}"
+        ref_name = self.matched_reference or self.reference_name
+        return f"REF {ref_name} (RAW:{self.raw_score:.2f} CONF:{self.confidence * 100:.0f}%) BBOX:{self.bbox}"

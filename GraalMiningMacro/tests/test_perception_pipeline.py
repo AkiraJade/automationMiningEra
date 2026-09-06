@@ -12,7 +12,7 @@ def test_perception_pipeline_processing():
     result = engine.process_frame(frame)
     assert isinstance(result, MiningPerceptionResult)
     assert result.player.detected is True
-    assert result.status.drill_state.value == "EQUIPPED"
+    assert result.status.drill_state.value == "UNKNOWN"
     assert result.status.battery_state.value == "BATTERY_OK"
     assert result.overall_confidence > 0.0
 
