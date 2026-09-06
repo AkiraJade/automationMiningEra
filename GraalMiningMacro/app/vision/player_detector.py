@@ -68,8 +68,19 @@ class PlayerDetector:
 
         min_y = 40 if height > 300 else 0
 
+        # Compute camera center prior (centered on game canvas inside viewport)
+        if world_roi is not None:
+            wx, wy, ww, wh = world_roi
+            cam_cx, cam_cy = wx + ww // 2, wy + wh // 2
+        else:
+            cam_cx, cam_cy = width // 2, max(height // 2, min_y + 15)
+
+        has_player_refs = False
+        if reference_manager is not None and getattr(reference_manager, 'registry', None) is not None:
+            has_player_refs = len(reference_manager.registry.get_enabled_by_category("player")) > 0
+
         # 1. REFERENCE TEMPLATE MATCHING (PRIMARY DETECTOR)
-        if reference_manager is not None:
+        if reference_manager is not None and has_player_refs:
             ref_match = None
 
             # Fast local tracking window if player was previously detected
@@ -93,9 +104,10 @@ class PlayerDetector:
 
             # Central viewport search prior (Graal camera keeps player centered in cave)
             if ref_match is None:
-                cx, cy = width // 2, max(height // 2, min_y + 15)
                 cw, ch = int(width * 0.50), int(height * 0.55)
-                central_roi = (max(0, cx - cw // 2), max(min_y, cy - ch // 2), min(width, cw), min(height, ch))
+                rx_start = max(0, cam_cx - cw // 2)
+                ry_start = max(min_y, cam_cy - ch // 2)
+                central_roi = (rx_start, ry_start, min(width - rx_start, cw), min(height - ry_start, ch))
 
                 # Primary scales: locked scale and native 1.0
                 primary_scales = [self._locked_scale] if abs(self._locked_scale - 1.0) < 1e-3 else [self._locked_scale, 1.0]
@@ -194,7 +206,7 @@ class PlayerDetector:
             for det in yolo_detections:
                 if getattr(det, "class_name", "") == "player" and det.confidence >= self.confidence_threshold:
                     center = det.center
-                    if center[1] >= 45:
+                    if center[1] >= min_y:
                         delta = self._calc_delta(center)
                         self._last_center = center
                         return PlayerDetection(
@@ -210,35 +222,35 @@ class PlayerDetector:
                             is_heuristic=False,
                         )
 
-        # 3. DYNAMIC CONTOUR & SHADOW BLOB SCANNER (Scans camera center for player sprite, excluding title bar)
-        dyn_center, dyn_bbox = self._detect_dynamic_contour(frame, gray_image)
-        if dyn_center and dyn_bbox and dyn_center[1] >= 45:
-            cx, cy = dyn_center
-            delta = self._calc_delta(dyn_center)
-            self._last_center = dyn_center
+        # 3. DYNAMIC CONTOUR & SHADOW BLOB SCANNER (ONLY IF NO PRE-UPLOADED REFERENCES EXIST)
+        if not has_player_refs:
+            dyn_center, dyn_bbox = self._detect_dynamic_contour(frame, gray_image)
+            if dyn_center and dyn_bbox and dyn_center[1] >= min_y:
+                cx, cy = dyn_center
+                delta = self._calc_delta(dyn_center)
+                self._last_center = dyn_center
 
-            return PlayerDetection(
-                detected=True,
-                bbox=dyn_bbox,
-                center=dyn_center,
-                raw_score=0.75,
-                confidence=0.75,
-                movement_delta=delta,
-                matched_reference_name="",
-                matched_subcategory="dynamic",
-                matched_reference_confidence=0.0,
-                detection_method="DYNAMIC_SCAN",
-                player_source="DYNAMIC_SCAN",
-                player_state="PLAYER_CONFIRMED",
-                is_heuristic=False,
-            )
+                return PlayerDetection(
+                    detected=True,
+                    bbox=dyn_bbox,
+                    center=dyn_center,
+                    raw_score=0.75,
+                    confidence=0.75,
+                    movement_delta=delta,
+                    matched_reference_name="",
+                    matched_subcategory="dynamic",
+                    matched_reference_confidence=0.0,
+                    detection_method="DYNAMIC_SCAN",
+                    player_source="DYNAMIC_SCAN",
+                    player_state="PLAYER_CONFIRMED",
+                    is_heuristic=False,
+                )
 
-        # 4. EXPLICIT CENTER HEURISTIC FALLBACK (Labeled clearly as HEURISTIC with low confidence 0.30)
+        # 4. EXPLICIT GAME CANVAS CENTER HEURISTIC FALLBACK
         if self.allow_heuristic_fallback:
-            cx, cy = width // 2, max(height // 2, 60)
             pw, ph = 36, 48
-            bbox = (cx - pw // 2, cy - ph // 2, pw, ph)
-            center = (cx, cy)
+            bbox = (cam_cx - pw // 2, cam_cy - ph // 2, pw, ph)
+            center = (cam_cx, cam_cy)
             heuristic_conf = 0.30  # Low confidence marker for unconfirmed heuristic fallback
 
             delta = self._calc_delta(center)

@@ -80,6 +80,37 @@ class MiningPerceptionEngine:
         self.status_schedule_interval: int = 3   # Every 3 ticks
         self.message_schedule_interval: int = 3  # Every 3 ticks
 
+    def _detect_game_canvas_roi(self, frame: np.ndarray) -> Tuple[int, int, int, int]:
+        """Detects active Graal game canvas bounding box inside captured window, stripping outer black margins."""
+        h, w = frame.shape[:2]
+        if h < 100 or w < 100:
+            return (0, 0, w, h)
+
+        import cv2
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+
+        # Threshold pixels > 12 to find non-black game canvas
+        _, mask = cv2.threshold(gray, 12, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if not contours:
+            return (0, 0, w, h)
+
+        best_roi = (0, 0, w, h)
+        max_area = 0
+
+        for c in contours:
+            x, y, bw, bh = cv2.boundingRect(c)
+            area = bw * bh
+            # Game canvas is at least 250x200
+            if bw >= 250 and bh >= 200 and area > max_area:
+                # Exclude full outer container window if it has black pillarboxing/letterboxing
+                if area < w * h * 0.98 or (bw < w * 0.95 or bh < h * 0.95):
+                    max_area = area
+                    best_roi = (x, y, bw, bh)
+
+        return best_roi
+
     def process_frame(self, frame: np.ndarray) -> MiningPerceptionResult:
         t_start = time.perf_counter()
         now = time.time()
@@ -90,18 +121,21 @@ class MiningPerceptionEngine:
 
         import cv2
         self._tick_count += 1
+        h, w = frame.shape[:2]
 
-        # Single-pass grayscale conversion reuse for all template matching in this cycle
+        # Auto-detect game viewport canvas to strip outer black letterboxing/pillarboxing
+        gx, gy, gw, gh = self._detect_game_canvas_roi(frame)
+        top_offset = max(40, gy + int(gh * 0.05)) if gy < 10 else gy
+
+        world_roi = (gx, top_offset, gw, max(100, int(gh * 0.90)))
+        message_roi = (gx + int(gw * 0.10), top_offset, int(gw * 0.80), int(gh * 0.25))
+        status_roi = (gx, top_offset, int(gw * 0.40), int(gh * 0.25))
+
+        # Single-pass grayscale conversion reuse for all template matching in this cycle (cropped to canvas for speed)
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
 
         # Per-cycle reference match cache to eliminate duplicate cv2.matchTemplate calls per tick
         match_cache: dict = {}
-
-        # Compute category relative operational ROIs (strictly Y >= 45px to exclude window title-bar header)
-        h, w = frame.shape[:2]
-        world_roi = (0, max(45, int(h * 0.08)), w, int(h * 0.88))
-        message_roi = (int(w * 0.10), max(45, int(h * 0.08)), int(w * 0.80), int(h * 0.22))
-        status_roi = (int(w * 0.0), max(45, int(h * 0.08)), int(w * 0.40), int(h * 0.22))
 
         # 1. YOLO Detections (if model loaded)
         yolo_dets = self.yolo_detector.detect(frame) if self.yolo_detector.is_loaded else None
