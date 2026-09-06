@@ -226,29 +226,28 @@ class PlayerDetector:
                             is_heuristic=False,
                         )
 
-        # 3. DYNAMIC CONTOUR & SHADOW BLOB SCANNER (ONLY IF NO PRE-UPLOADED REFERENCES EXIST)
-        if not has_player_refs:
-            dyn_center, dyn_bbox = self._detect_dynamic_contour(frame, gray_image)
-            if dyn_center and dyn_bbox and dyn_center[1] >= min_y:
-                cx, cy = dyn_center
-                delta = self._calc_delta(dyn_center)
-                self._last_center = dyn_center
+        # 3. DYNAMIC CONTOUR & SHADOW BLOB SCANNER (Fallback when reference templates miss custom skins/hats)
+        dyn_center, dyn_bbox = self._detect_dynamic_contour(frame, gray_image, world_roi)
+        if dyn_center and dyn_bbox and dyn_center[1] >= min_y:
+            cx, cy = dyn_center
+            delta = self._calc_delta(dyn_center)
+            self._last_center = dyn_center
 
-                return PlayerDetection(
-                    detected=True,
-                    bbox=dyn_bbox,
-                    center=dyn_center,
-                    raw_score=0.75,
-                    confidence=0.75,
-                    movement_delta=delta,
-                    matched_reference_name="",
-                    matched_subcategory="dynamic",
-                    matched_reference_confidence=0.0,
-                    detection_method="DYNAMIC_SCAN",
-                    player_source="DYNAMIC_SCAN",
-                    player_state="PLAYER_CONFIRMED",
-                    is_heuristic=False,
-                )
+            return PlayerDetection(
+                detected=True,
+                bbox=dyn_bbox,
+                center=dyn_center,
+                raw_score=0.80,
+                confidence=0.80,
+                movement_delta=delta,
+                matched_reference_name="",
+                matched_subcategory="dynamic",
+                matched_reference_confidence=0.0,
+                detection_method="DYNAMIC_SCAN",
+                player_source="DYNAMIC_SCAN",
+                player_state="PLAYER_CONFIRMED",
+                is_heuristic=False,
+            )
 
         # 4. EXPLICIT GAME CANVAS CENTER HEURISTIC FALLBACK
         if self.allow_heuristic_fallback:
@@ -277,24 +276,30 @@ class PlayerDetector:
         return PlayerDetection(detected=False, confidence=0.0, player_source="NONE", player_state="PLAYER_NOT_FOUND")
 
     def _detect_dynamic_contour(
-        self, frame: np.ndarray, gray_image: Optional[np.ndarray] = None
+        self,
+        frame: np.ndarray,
+        gray_image: Optional[np.ndarray] = None,
+        world_roi: Optional[Tuple[int, int, int, int]] = None,
     ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[int, int, int, int]]]:
-        """Scans the central camera region for character sprite contours and ground shadows."""
+        """Scans the active game canvas for character sprite contours and ground shadows."""
         import cv2
         h, w = frame.shape[:2]
-        cam_cx, cam_cy = w // 2, max(h // 2, 60)
 
-        # Define search ROI centered around camera (width 35%, height 40%), strictly Y >= 45px
-        roi_w, roi_h = int(w * 0.35), int(h * 0.40)
-        rx = max(30, cam_cx - roi_w // 2)
-        ry = max(45, cam_cy - roi_h // 2)
+        if world_roi is not None:
+            rx, ry, rw, rh = world_roi
+            rx = max(10, rx)
+            ry = max(45, ry)
+            rw = min(w - rx - 10, rw)
+            rh = min(h - ry - 10, rh)
+        else:
+            rx, ry, rw, rh = 30, 45, max(100, w - 60), max(100, h - 90)
 
         if gray_image is not None:
-            roi_gray = gray_image[ry:ry+roi_h, rx:rx+roi_w]
+            roi_gray = gray_image[ry:ry+rh, rx:rx+rw]
         elif len(frame.shape) == 3:
-            roi_gray = cv2.cvtColor(frame[ry:ry+roi_h, rx:rx+roi_w], cv2.COLOR_BGR2GRAY)
+            roi_gray = cv2.cvtColor(frame[ry:ry+rh, rx:rx+rw], cv2.COLOR_BGR2GRAY)
         else:
-            roi_gray = frame[ry:ry+roi_h, rx:rx+roi_w]
+            roi_gray = frame[ry:ry+rh, rx:rx+rw]
 
         if roi_gray.size == 0 or roi_gray.shape[0] < 20 or roi_gray.shape[1] < 20:
             return None, None
@@ -306,30 +311,38 @@ class PlayerDetector:
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         best_center = None
         best_bbox = None
-        min_dist_to_center = float('inf')
+        min_score_dist = float('inf')
+
+        cam_cx = rx + rw // 2
+        cam_cy = ry + rh // 2
 
         for c in contours:
             area = cv2.contourArea(c)
-            if area < 80 or area > 6000:
+            if area < 60 or area > 7000:
                 continue
 
             bx, by, bw, bh = cv2.boundingRect(c)
             # Character sprite bounding dimensions filter
-            if 18 <= bw <= 80 and 22 <= bh <= 90:
+            if 16 <= bw <= 85 and 20 <= bh <= 95:
                 aspect = bw / float(bh)
-                if 0.35 <= aspect <= 1.4:
+                if 0.30 <= aspect <= 1.45:
                     abs_x = rx + bx + bw // 2
                     abs_y = ry + by + bh // 2
 
-                    if abs_y >= 45:
-                        dist = np.hypot(abs_x - cam_cx, abs_y - cam_cy)
-                        if dist < min_dist_to_center:
-                            min_dist_to_center = dist
+                    # Exclude title bar and top-left UI header buttons on full canvas frames
+                    is_ui = (h >= 400 and w >= 600) and (abs_y < 45 or (abs_x < 450 and abs_y < 250))
+                    if not is_ui:
+                        if self._last_center is not None:
+                            dist = float(np.hypot(abs_x - self._last_center[0], abs_y - self._last_center[1]))
+                        else:
+                            dist = float(np.hypot(abs_x - cam_cx, abs_y - cam_cy))
+
+                        if dist < min_score_dist:
+                            min_score_dist = dist
                             best_center = (abs_x, abs_y)
                             best_bbox = (rx + bx, ry + by, bw, bh)
 
-        # Accept contour if it lies within 100px of camera center
-        if best_center and min_dist_to_center <= 100.0:
+        if best_center:
             return best_center, best_bbox
 
         return None, None
