@@ -86,17 +86,18 @@ class PlayerDetector:
             # Fast local tracking window if player was previously detected
             if self._last_center is not None:
                 lcx, lcy = self._last_center
-                track_w, track_h = 360, 360
+                track_w, track_h = 380, 380
                 track_x = max(0, min(lcx - track_w // 2, width - track_w))
                 track_y = max(min_y, min(lcy - track_h // 2, height - track_h - min_y))
                 track_roi = (track_x, track_y, min(width - track_x, track_w), min(height - track_y, track_h))
+                track_scales = [self._locked_scale, 1.0, 1.05, 0.95] if abs(self._locked_scale - 1.0) > 1e-3 else [1.0, 1.05, 0.95]
                 cand_match = reference_manager.find_best_match(
                     frame,
                     category="player",
                     roi=track_roi,
                     gray_image=gray_image,
                     match_cache=match_cache,
-                    candidate_scales=[self._locked_scale, 1.0],
+                    candidate_scales=track_scales,
                     use_core=True,
                 )
                 if cand_match and cand_match.found and cand_match.confidence >= self.confidence_threshold:

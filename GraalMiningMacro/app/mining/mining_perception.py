@@ -239,17 +239,17 @@ class MiningPerceptionEngine:
             target_conf = result.wall.confidence
             rock_iter = 0
 
-        # Fallback target candidate based on player facing direction prior
+        # Fallback target candidate based on player facing direction prior (positioned in front of character)
         if target_center is None and confirmed_player_center and facing_dir != "UNKNOWN":
             px, py = confirmed_player_center
             if facing_dir == "LEFT":
-                target_center = (px - 28, py)
+                target_center = (px - 32, py)
             elif facing_dir == "RIGHT":
-                target_center = (px + 28, py)
+                target_center = (px + 32, py)
             elif facing_dir == "UP":
-                target_center = (px, py - 28)
+                target_center = (px, py - 32)
             elif facing_dir == "DOWN":
-                target_center = (px, py + 28)
+                target_center = (px, py + 32)
 
             if target_center:
                 target_bbox = (max(0, target_center[0] - 15), max(0, target_center[1] - 15), 30, 30)
